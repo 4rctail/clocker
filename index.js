@@ -19,9 +19,7 @@ const GIT_BRANCH = process.env.GIT_BRANCH || "main";
 // =======================
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.Guilds
   ],
 });
 
@@ -319,7 +317,8 @@ client.on("interactionCreate", async interaction => {
   const member =
     interaction.options.getMember("user") ??
     interaction.member ??
-    (await interaction.guild.members.fetch(interaction.user.id));
+    null;
+
   
   const userId = member.id;
   
@@ -631,9 +630,14 @@ client.on("interactionCreate", async interaction => {
     const targetUser =
       interaction.options.getUser("user") || interaction.user;
     
-    const member =
-      interaction.guild.members.cache.get(targetUser.id) ||
-      await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    let member = null;
+    
+    if (interaction.inGuild()) {
+      member =
+        interaction.guild.members.cache.get(targetUser.id) ||
+        await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    }
+
     
     const displayName =
       member?.displayName ||
