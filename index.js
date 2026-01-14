@@ -457,7 +457,7 @@ client.on("interactionCreate", async interaction => {
       await persist();
     }
   
-    const userData = timesheet[username];
+    const userData = timesheet[interaction.user.id];
   
     // ===== CLOCKED IN =====
     if (userData?.active) {
