@@ -624,24 +624,29 @@ client.on("interactionCreate", async interaction => {
 
   
     // ===== VIEW =====
-    // ===== TIMESHEET VIEW (USERNAME ONLY) =====
+    // ===== TIMESHEET VIEW (USER OPTION + DATE RANGE) =====
     await loadFromDisk();
-
     
-    if (timesheet.undefined) {
-      delete timesheet.undefined;
-      await persist();
-    }
-
-    const user = resolveStrictUser(interaction);
-    if (!user) return interaction.editReply("❌ Cannot resolve user.");
-
-    const record = timesheet[user.userId];
+    // get target user (option OR self)
+    const targetUser =
+      interaction.options.getUser("user") || interaction.user;
+    
+    const member =
+      interaction.guild.members.cache.get(targetUser.id) ||
+      await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    
+    const displayName =
+      member?.displayName ||
+      targetUser.globalName ||
+      targetUser.username;
+    
+    const record = timesheet[targetUser.id];
+    
     if (!record || !Array.isArray(record.logs) || record.logs.length === 0) {
       return interaction.editReply("📭 No records found.");
     }
-
     
+    // date range
     const startStr = interaction.options.getString("start");
     const endStr   = interaction.options.getString("end");
     
@@ -656,9 +661,7 @@ client.on("interactionCreate", async interaction => {
       const s = new Date(l.start);
       if ((start && s < start) || (end && s > end)) continue;
     
-      const hours =
-        (new Date(l.end) - new Date(l.start)) / 3600000;
-    
+      const hours = (new Date(l.end) - new Date(l.start)) / 3600000;
       total += hours;
       count++;
     
@@ -681,7 +684,8 @@ client.on("interactionCreate", async interaction => {
         title: "🧾 Timesheet",
         color: 0x3498db,
         fields: [
-          { name: "👤 User", value: username, inline: true },
+          { name: "👤 User", value: displayName, inline: true },
+          { name: "🆔 User ID", value: targetUser.id, inline: true },
           { name: "📅 Range", value: rangeLabel, inline: true },
           { name: "🧮 Sessions", value: String(count), inline: true },
           {
@@ -699,7 +703,6 @@ client.on("interactionCreate", async interaction => {
         timestamp: new Date().toISOString(),
       }],
     });
-
   }
 });  
 // =======================
