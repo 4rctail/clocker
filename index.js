@@ -25,6 +25,11 @@ const client = new Client({
   ],
 });
 
+// Prevent crashes from unhandled Discord errors
+client.on("error", (err) => {
+  console.error("Discord client error:", err);
+});
+
 function migrateUsernameTimesheetToUserId() {
   const migrated = {};
   let changed = false;
@@ -128,6 +133,19 @@ async function loadFromDisk() {
   }
 }
 
+async function safeEdit(interaction, payload) {
+  try {
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply(payload);
+    } else {
+      await interaction.editReply(payload);
+    }
+  } catch (err) {
+    // Ignore if interaction is unknown or expired
+    if (err.code === 10062) return;
+    console.error("Interaction update failed:", err);
+  }
+}
 
 async function safeGetMember(interaction, userId) {
   if (!interaction.inGuild()) return null;
@@ -578,22 +596,21 @@ client.on("interactionCreate", async interaction => {
         liveStatusTimers.delete(uid);
       }
   
-      await interaction.editReply({ embeds: [buildEmbed()] });
-  
+      await safeEdit(interaction, { embeds: [buildEmbed()] });
+
       const timer = setInterval(async () => {
+        // Stop if user no longer active
         if (!timesheet[uid]?.active) {
           clearInterval(timer);
           liveStatusTimers.delete(uid);
           return;
         }
-  
-        try {
-          await interaction.editReply({ embeds: [buildEmbed()] });
-        } catch {
-          clearInterval(timer);
-          liveStatusTimers.delete(uid);
-        }
+      
+        const embed = buildEmbed(); // your existing buildEmbed function
+      
+        await safeEdit(interaction, { embeds: [embed] });
       }, 5000);
+
   
       liveStatusTimers.set(uid, timer);
       return;
