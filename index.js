@@ -76,6 +76,16 @@ async function loadFromDisk() {
   }
 }
 
+async function safeGetMember(interaction, userId) {
+  if (!interaction.inGuild()) return null;
+  if (!interaction.guild) return null;
+
+  return (
+    interaction.guild.members.cache.get(userId) ||
+    await interaction.guild.members.fetch(userId).catch(() => null)
+  );
+}
+
 
 // =======================
 // STRICT USER RESOLUTION (ID-FIRST)
@@ -641,14 +651,8 @@ client.on("interactionCreate", async interaction => {
     // parse dates
     const start = parseDate(startStr);
     const end   = parseDate(endStr, true);
-    
-    // resolve member for display name
-    let member = null;
-    if (interaction.inGuild()) {
-      member =
-        interaction.guild.members.cache.get(targetUser.id) ||
-        await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-    }
+    const member = await safeGetMember(interaction, targetUser.id);
+
     
     const displayName =
       member?.displayName ||
