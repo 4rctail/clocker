@@ -55,6 +55,37 @@ function migrateUsernameTimesheetToUserId() {
   }
 }
 
+function mergeDuplicateUsers() {
+  for (const [key, record] of Object.entries(timesheet)) {
+    // Skip if key is already the userId
+    if (key === record.userId) continue;
+
+    // If a record exists under the userId, merge logs
+    if (timesheet[record.userId]) {
+      const existing = timesheet[record.userId];
+
+      // Merge logs
+      existing.logs = [...existing.logs, ...(record.logs || [])];
+
+      // Merge lastKnownNames
+      for (const n of record.lastKnownNames || []) {
+        if (!existing.lastKnownNames.includes(n)) {
+          existing.lastKnownNames.push(n);
+        }
+      }
+
+      // Merge active session if one exists
+      if (record.active) existing.active = record.active;
+
+      // Delete the old key
+      delete timesheet[key];
+    } else {
+      // Simply rename the key to userId
+      timesheet[record.userId] = record;
+      delete timesheet[key];
+    }
+  }
+}
 
 function formatSession(startISO, endISO) {
   const dateOpts = {
@@ -364,6 +395,7 @@ client.on("interactionCreate", async interaction => {
     if (interaction.commandName === "totalhr") {
       await loadFromDisk();
       migrateUsernameTimesheetToUserId();
+      mergeDuplicateUsers()
       let lines = [];
     
       for (const user of Object.values(timesheet)) {
@@ -401,6 +433,7 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "clockin") {
     await loadFromDisk();
     migrateUsernameTimesheetToUserId();
+    mergeDuplicateUsers()
   
     const user = resolveStrictUser(interaction);
     if (!user) {
@@ -437,6 +470,7 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "clockout") {
     await loadFromDisk();
     migrateUsernameTimesheetToUserId();
+    mergeDuplicateUsers()
     
     const user = resolveStrictUser(interaction);
     if (!user) {
@@ -490,6 +524,7 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "status") {
     await loadFromDisk();
     migrateUsernameTimesheetToUserId();
+    mergeDuplicateUsers()
   
     const uid = interaction.user.id;
     const record = timesheet[uid];
@@ -618,6 +653,8 @@ client.on("interactionCreate", async interaction => {
     
       await loadFromDisk();
       migrateUsernameTimesheetToUserId();
+      mergeDuplicateUsers()
+      
       if (timesheet?.undefined) {
         delete timesheet.undefined;
         await persist();
@@ -663,6 +700,7 @@ client.on("interactionCreate", async interaction => {
     // ===== TIMESHEET VIEW (SELF / USER / DATE RANGE / BOTH) =====
     await loadFromDisk();
     migrateUsernameTimesheetToUserId();
+    mergeDuplicateUsers()
     
     // options (all optional)
     const targetUser =
@@ -754,6 +792,7 @@ client.on("interactionCreate", async interaction => {
   startKeepAlive();
   await loadFromGitHub();
   migrateUsernameTimesheetToUserId();
+  mergeDuplicateUsers()
   await client.login(process.env.DISCORD_TOKEN);
   console.log(`✅ Logged in as ${client.user.tag}`);
 })();
