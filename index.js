@@ -30,20 +30,11 @@ client.on("error", (err) => {
   console.error("Discord client error:", err);
 });
 
-/**
- * Safely merge an old username key into a new userId key.
- * Preserves:
- * - logs (appends without duplicates)
- * - active
- * - name
- * - lastKnownNames
- * Deletes old key ONLY if merge succeeds.
- */
 function mergeUserData(oldKey, newUserId) {
   const oldData = timesheet[oldKey];
-  if (!oldData) return; // nothing to merge
+  if (!oldData) return;
 
-  // If new userId doesn't exist, create it
+  // If target doesn't exist, create it
   if (!timesheet[newUserId]) {
     timesheet[newUserId] = {
       userId: newUserId,
@@ -56,70 +47,61 @@ function mergeUserData(oldKey, newUserId) {
 
   const target = timesheet[newUserId];
 
-  // Merge logs (avoid duplicates)
-  const allLogs = [...(oldData.logs || []), ...(target.logs || [])];
-  const uniqueLogs = [];
+  // Merge logs, avoid duplicates
+  const allLogs = [...(target.logs || []), ...(oldData.logs || [])];
   const seen = new Set();
+  const mergedLogs = [];
   for (const log of allLogs) {
     const key = `${log.start}|${log.end}`;
     if (!seen.has(key)) {
       seen.add(key);
-      uniqueLogs.push(log);
+      mergedLogs.push(log);
     }
   }
-  target.logs = uniqueLogs;
+  target.logs = mergedLogs;
 
   // Merge lastKnownNames
-  target.lastKnownNames = Array.from(
-    new Set([...(target.lastKnownNames || []), ...(oldData.lastKnownNames || []), oldData.name || oldKey])
-  );
+  target.lastKnownNames = Array.from(new Set([
+    ...(target.lastKnownNames || []),
+    ...(oldData.lastKnownNames || []),
+    oldData.name || oldKey
+  ]));
 
-  // Preserve active if target.active is null
-  if (!target.active && oldData.active) {
-    target.active = oldData.active;
-  }
+  // Preserve active if target has none
+  if (!target.active && oldData.active) target.active = oldData.active;
 
-  // Preserve name (keep target name if already set)
-  if (!target.name && oldData.name) {
-    target.name = oldData.name;
-  }
+  // Preserve name if missing
+  if (!target.name && oldData.name) target.name = oldData.name;
 
   // Verify logs copied successfully
-  const origLogs = JSON.stringify(oldData.logs || []);
-  const newLogs = JSON.stringify(target.logs || []);
-  if (newLogs.includes(origLogs)) {
+  const oldLogsStr = JSON.stringify(oldData.logs || []);
+  const targetLogsStr = JSON.stringify(target.logs || []);
+  if (targetLogsStr.includes(oldLogsStr)) {
     delete timesheet[oldKey];
-    console.log(`✅ Successfully merged ${oldKey} → ${newUserId}`);
+    console.log(`✅ Merged ${oldKey} → ${newUserId}`);
   } else {
-    console.error(`❌ Merge failed for ${oldKey}. Data mismatch.`);
+    console.error(`❌ Failed to merge ${oldKey}`);
   }
 }
-// =======================
-// AUTO-MERGE OLD USER KEYS
-// =======================
-let timesheet = {};  // <-- MUST be declared first
-let gitCommitTimer = null;
-// =======================
-// AUTO-MERGE OLD USER KEYS
-// =======================
+
+/**
+ * Iterate over all keys and migrate old username keys
+ */
 function autoMergeOldUsers() {
   const keys = Object.keys(timesheet);
-
   for (const key of keys) {
     const data = timesheet[key];
-
-    // Skip if already a proper userId entry
+    // Skip proper userId entries
     if (data.userId && data.userId === key) continue;
 
-    // If key is an old username entry and matches an existing userId
+    // If old key has logs + name
     if (data.name && data.logs) {
-      // Try to find existing entry with same name
+      // Try to find existing userId entry with same name
       const targetKey = Object.keys(timesheet).find(
-        k => k !== key && timesheet[k].name === data.name
+        k => k !== key && timesheet[k].userId && timesheet[k].name === data.name
       );
 
       if (targetKey) {
-        // Merge into the userId entry
         mergeUserData(key, targetKey);
       } else if (data.userId) {
         mergeUserData(key, data.userId);
