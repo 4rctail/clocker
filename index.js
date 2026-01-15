@@ -8,7 +8,7 @@ import { startKeepAlive } from "./keepAlive.js";
 // =======================
 const PH_TZ = "Asia/Manila";
 const DATA_FILE = "./timesheet.json";
-const MANAGERS = ["4rc", "Rich"];
+const MANAGER_IDS = ["123456789012345678", "987654321098765432"];
 const GIT_TOKEN = process.env.GIT_TOKEN;
 const GIT_USER = process.env.GIT_USER;
 const GIT_REPO = process.env.GIT_REPO;
@@ -25,6 +25,35 @@ const client = new Client({
   ],
 });
 
+function migrateUsernameTimesheetToUserId() {
+  const migrated = {};
+  let changed = false;
+
+  for (const [key, record] of Object.entries(timesheet)) {
+    // already migrated
+    if (record?.userId) {
+      migrated[record.userId] = record;
+      continue;
+    }
+
+    // legacy username-based record
+    if (record?.name && Array.isArray(record.logs)) {
+      migrated[key] = {
+        userId: key, // TEMP until user clocks in again
+        name: record.name,
+        lastKnownNames: [record.name],
+        logs: record.logs,
+        active: record.active ?? null,
+      };
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    timesheet = migrated;
+    console.log("🛠 Migrated legacy username-based timesheet");
+  }
+}
 
 
 function formatSession(startISO, endISO) {
@@ -65,16 +94,9 @@ async function loadFromDisk() {
     timesheet = JSON.parse(raw);
   } catch {
     timesheet = {};
-    return;
-  }
-
-  // sanitize corrupted entries
-  for (const [key, val] of Object.entries(timesheet)) {
-    if (!val?.userId || key !== val.userId) {
-      delete timesheet[key];
-    }
   }
 }
+
 
 async function safeGetMember(interaction, userId) {
   if (!interaction.inGuild()) return null;
@@ -312,12 +334,13 @@ async function commitToGitHub() {
   console.log("✅ Timesheet committed to GitHub");
 }
 
-function hasManagerRole(username) {
-  if (!username) return false;
-  return MANAGERS.includes(username);
+function hasManagerRoleById(userId) {
+  return MANAGER_IDS.includes(userId);
 }
 
-
+process.on("unhandledRejection", err => {
+  console.error("Unhandled rejection:", err);
+});
 
 // =======================
 // SLASH COMMANDS
@@ -333,21 +356,14 @@ client.on("interactionCreate", async interaction => {
   }
 
   await interaction.deferReply();
-
-  const member =
-    interaction.options.getMember("user") ??
-    interaction.member ??
-    null;
-
   
-  const userId = member.id;
-  
+    
     
     // -------- TOTAL HOURS (ALL USERS) --------
     // -------- TOTAL HOURS (ALL USERS) --------
     if (interaction.commandName === "totalhr") {
       await loadFromDisk();
-    
+      migrateUsernameTimesheetToUserId();
       let lines = [];
     
       for (const user of Object.values(timesheet)) {
@@ -384,6 +400,7 @@ client.on("interactionCreate", async interaction => {
   // -------- CLOCK IN --------
   if (interaction.commandName === "clockin") {
     await loadFromDisk();
+    migrateUsernameTimesheetToUserId();
   
     const user = resolveStrictUser(interaction);
     if (!user) {
@@ -419,7 +436,8 @@ client.on("interactionCreate", async interaction => {
   // -------- CLOCK OUT (EMBED + DETAILS) --------
   if (interaction.commandName === "clockout") {
     await loadFromDisk();
-  
+    migrateUsernameTimesheetToUserId();
+    
     const user = resolveStrictUser(interaction);
     if (!user) {
       return interaction.editReply("❌ Cannot resolve user.");
@@ -471,14 +489,9 @@ client.on("interactionCreate", async interaction => {
   // -------- STATUS (SAFE, ID-ONLY, NO CRASHES) --------
   if (interaction.commandName === "status") {
     await loadFromDisk();
+    migrateUsernameTimesheetToUserId();
   
     const uid = interaction.user.id;
-  
-    const username =
-      interaction.member?.displayName ||
-      interaction.user.globalName ||
-      interaction.user.username;
-  
     const record = timesheet[uid];
   
     // ===== CLOCKED IN =====
@@ -494,7 +507,14 @@ client.on("interactionCreate", async interaction => {
       const buildEmbed = () => ({
         ...embedBase,
         fields: [
-          { name: "👤 User", value: username, inline: true },
+          { 
+            name: "👤 User",
+            value:
+              interaction.member?.displayName ||
+              interaction.user.globalName ||
+              interaction.user.username,
+            inline: true,
+          },
           {
             name: "📍 Voice Channel",
             value:
@@ -553,7 +573,14 @@ client.on("interactionCreate", async interaction => {
         title: "⚪ Status: Clocked Out",
         color: 0x95a5a6,
         fields: [
-          { name: "👤 User", value: username, inline: true },
+          {
+            name: "👤 User",
+            value:
+              interaction.member?.displayName ||
+              interaction.user.globalName ||
+              interaction.user.username,
+            inline: true,
+          },
           {
             name: "⏱ Total Recorded Time",
             value: `${Math.round(total * 100) / 100}h`,
@@ -582,25 +609,20 @@ client.on("interactionCreate", async interaction => {
           member = null;
         }
       }
+      ;
       
-      const username =
-        interaction.member?.displayName ||
-        interaction.user?.globalName ||
-        interaction.user?.username;
-      
-      if (!hasManagerRole(username)) {
+      if (!hasManagerRoleById(interaction.user.id)) {
         return interaction.editReply("❌ Managers only.");
       }
 
     
       await loadFromDisk();
+      migrateUsernameTimesheetToUserId();
       if (timesheet?.undefined) {
         delete timesheet.undefined;
         await persist();
       }
-      process.on("unhandledRejection", err => {
-        console.error("Unhandled rejection:", err);
-      });
+
       // sanitize corrupted keys
       if (timesheet.undefined) {
         delete timesheet.undefined;
@@ -640,6 +662,7 @@ client.on("interactionCreate", async interaction => {
     // ===== VIEW =====
     // ===== TIMESHEET VIEW (SELF / USER / DATE RANGE / BOTH) =====
     await loadFromDisk();
+    migrateUsernameTimesheetToUserId();
     
     // options (all optional)
     const targetUser =
@@ -723,12 +746,14 @@ client.on("interactionCreate", async interaction => {
 
   }
 });  
+
 // =======================
 // STARTUP
 // =======================
 (async () => {
   startKeepAlive();
   await loadFromGitHub();
+  migrateUsernameTimesheetToUserId();
   await client.login(process.env.DISCORD_TOKEN);
   console.log(`✅ Logged in as ${client.user.tag}`);
 })();
