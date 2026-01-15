@@ -628,47 +628,49 @@ client.on("interactionCreate", async interaction => {
 
   
     // ===== VIEW =====
-    // ===== TIMESHEET VIEW (USER OPTION + DATE RANGE) =====
+    // ===== TIMESHEET VIEW (SELF / USER / DATE RANGE / BOTH) =====
     await loadFromDisk();
     
-    // get target user (option OR self)
+    // options (all optional)
     const targetUser =
       interaction.options.getUser("user") || interaction.user;
     
-    let member = null;
+    const startStr = interaction.options.getString("start");
+    const endStr   = interaction.options.getString("end");
     
+    // parse dates
+    const start = parseDate(startStr);
+    const end   = parseDate(endStr, true);
+    
+    // resolve member for display name
+    let member = null;
     if (interaction.inGuild()) {
       member =
         interaction.guild.members.cache.get(targetUser.id) ||
         await interaction.guild.members.fetch(targetUser.id).catch(() => null);
     }
-
     
     const displayName =
       member?.displayName ||
       targetUser.globalName ||
       targetUser.username;
     
+    // fetch record
     const record = timesheet[targetUser.id];
     
     if (!record || !Array.isArray(record.logs) || record.logs.length === 0) {
       return interaction.editReply("📭 No records found.");
     }
     
-    // date range
-    const startStr = interaction.options.getString("start");
-    const endStr   = interaction.options.getString("end");
-    
-    const start = parseDate(startStr);
-    const end   = parseDate(endStr, true);
-    
+    // filter logs by date range
     let total = 0;
     let lines = [];
     let count = 0;
     
     for (const l of record.logs) {
-      const s = new Date(l.start);
-      if ((start && s < start) || (end && s > end)) continue;
+      const sessionStart = new Date(l.start);
+    
+      if ((start && sessionStart < start) || (end && sessionStart > end)) continue;
     
       const hours = (new Date(l.end) - new Date(l.start)) / 3600000;
       total += hours;
@@ -680,14 +682,16 @@ client.on("interactionCreate", async interaction => {
     }
     
     if (!count) {
-      return interaction.editReply("📭 No sessions in range.");
+      return interaction.editReply("📭 No sessions in the selected range.");
     }
     
+    // range label
     const rangeLabel =
       startStr || endStr
         ? `${startStr || "Beginning"} → ${endStr || "Now"}`
         : "All time";
     
+    // response
     return interaction.editReply({
       embeds: [{
         title: "🧾 Timesheet",
@@ -712,6 +716,7 @@ client.on("interactionCreate", async interaction => {
         timestamp: new Date().toISOString(),
       }],
     });
+
   }
 });  
 // =======================
