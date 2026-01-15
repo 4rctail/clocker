@@ -458,27 +458,31 @@ client.on("interactionCreate", async interaction => {
 
 
   // -------- STATUS (EMBED + LIVE UPDATE) --------
-  // -------- STATUS (USERNAME ONLY, SAFE) --------
+  // -------- STATUS (SAFE, ID-ONLY, NO CRASHES) --------
   if (interaction.commandName === "status") {
     await loadFromDisk();
-    if (timesheet.undefined) {
-      delete timesheet.undefined;
-      await persist();
-    }
+  
+    const uid = interaction.user.id;
+  
     const username =
       interaction.member?.displayName ||
       interaction.user.globalName ||
       interaction.user.username;
-
-    const userData = timesheet[interaction.user.id];
+  
+    const record = timesheet[uid];
   
     // ===== CLOCKED IN =====
-    if (userData?.active) {
-      const start = userData.active;
+    if (record?.active) {
+      const start = record.active;
   
-      const embed = {
+      const embedBase = {
         title: "🟢 Status: Clocked In",
         color: 0x2ecc71,
+        footer: { text: "Live updating every 5 seconds" },
+      };
+  
+      const buildEmbed = () => ({
+        ...embedBase,
         fields: [
           { name: "👤 User", value: username, inline: true },
           {
@@ -499,9 +503,59 @@ client.on("interactionCreate", async interaction => {
             inline: true,
           },
         ],
-        footer: { text: "Live updating every 5 seconds" },
         timestamp: new Date().toISOString(),
-      };
+      });
+  
+      // clear existing timer
+      const existing = liveStatusTimers.get(uid);
+      if (existing) {
+        clearInterval(existing);
+        liveStatusTimers.delete(uid);
+      }
+  
+      await interaction.editReply({ embeds: [buildEmbed()] });
+  
+      const timer = setInterval(async () => {
+        if (!timesheet[uid]?.active) {
+          clearInterval(timer);
+          liveStatusTimers.delete(uid);
+          return;
+        }
+  
+        try {
+          await interaction.editReply({ embeds: [buildEmbed()] });
+        } catch {
+          clearInterval(timer);
+          liveStatusTimers.delete(uid);
+        }
+      }, 5000);
+  
+      liveStatusTimers.set(uid, timer);
+      return;
+    }
+  
+    // ===== CLOCKED OUT =====
+    const total =
+      record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
+  
+    return interaction.editReply({
+      embeds: [{
+        title: "⚪ Status: Clocked Out",
+        color: 0x95a5a6,
+        fields: [
+          { name: "👤 User", value: username, inline: true },
+          {
+            name: "⏱ Total Recorded Time",
+            value: `${Math.round(total * 100) / 100}h`,
+            inline: true,
+          },
+        ],
+        footer: { text: "No active session" },
+        timestamp: new Date().toISOString(),
+      }],
+    });
+  }
+
   
       // clear old timer
       const uid = interaction.user.id;
