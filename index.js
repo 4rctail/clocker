@@ -19,7 +19,9 @@ const GIT_BRANCH = process.env.GIT_BRANCH || "main";
 // =======================
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
@@ -312,6 +314,14 @@ function hasManagerRole(username) {
 // =======================
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  if (!interaction.inGuild()) {
+    return interaction.reply({
+      content: "❌ This command can only be used in a server.",
+      ephemeral: true,
+    });
+  }
+
   await interaction.deferReply();
 
   const member =
@@ -455,7 +465,11 @@ client.on("interactionCreate", async interaction => {
       delete timesheet.undefined;
       await persist();
     }
-  
+    const username =
+      interaction.member?.displayName ||
+      interaction.user.globalName ||
+      interaction.user.username;
+
     const userData = timesheet[interaction.user.id];
   
     // ===== CLOCKED IN =====
@@ -490,7 +504,10 @@ client.on("interactionCreate", async interaction => {
       };
   
       // clear old timer
-      const existing = liveStatusTimers.get(username);
+      const uid = interaction.user.id;
+      liveStatusTimers.get(uid)
+      liveStatusTimers.set(uid, timer)
+
       if (existing) {
         clearInterval(existing);
         liveStatusTimers.delete(username);
