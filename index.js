@@ -77,13 +77,9 @@ function mergeUserData(oldKey, newUserId) {
   if (!target.name && oldData.name) target.name = oldData.name;
 
   // Verify logs copied successfully
-  const oldLogsStr = JSON.stringify(oldData.logs || []);
-  const targetLogsStr = JSON.stringify(target.logs || []);
-  if (targetLogsStr.includes(oldLogsStr)) {
+  if ((oldData.logs?.length || 0) <= (target.logs?.length || 0)) {
     delete timesheet[oldKey];
     console.log(`✅ Merged ${oldKey} → ${newUserId}`);
-  } else {
-    console.error(`❌ Failed to merge ${oldKey}`);
   }
 }
 
@@ -113,10 +109,6 @@ function autoMergeOldUsers() {
   }
 }
 
-
-// Run after loading GitHub timesheet
-autoMergeOldUsers();
-await persist();
 
 
 function formatSession(startISO, endISO) {
@@ -297,57 +289,62 @@ const liveStatusTimers = new Map();
 /**
  * Merge old username keys into proper userId entries before saving
  */
+
 function mergeBeforePersist() {
   const keys = Object.keys(timesheet);
 
   for (const key of keys) {
     const data = timesheet[key];
+    if (!data || typeof data !== "object") continue;
 
-    // Skip proper userId entries
-    if (data.userId && data.userId === key) continue;
+    // Skip already-correct userId records
+    if (data.userId && key === data.userId) continue;
 
-    // If key has logs and a name
-    if (data.name && Array.isArray(data.logs)) {
-      // Try to find a target by same userId
-      const targetById = Object.values(timesheet).find(
-        u => u.userId && u.userId === data.userId
+    if (!Array.isArray(data.logs) || !data.name) continue;
+
+    // Find correct target by userId first
+    let target = null;
+
+    if (data.userId && timesheet[data.userId]) {
+      target = timesheet[data.userId];
+    } else {
+      // Fallback: find by name with userId
+      target = Object.values(timesheet).find(
+        u => u.userId && u.name === data.name
       );
+    }
 
-      if (targetById) {
-        // Merge logs and active
-        for (const log of data.logs) {
-          if (!targetById.logs.some(l => l.start === log.start && l.end === log.end)) {
-            targetById.logs.push(log);
-          }
-        }
-        if (!targetById.active && data.active) targetById.active = data.active;
-        if (!targetById.lastKnownNames.includes(data.name)) {
-          targetById.lastKnownNames.push(data.name);
-        }
-        delete timesheet[key];
-        console.log(`✅ Merged old key ${key} → ${targetById.userId}`);
-        continue;
-      }
+    if (!target) continue;
 
-      // Otherwise, try matching by username with no userId
-      const targetByName = Object.values(timesheet).find(
-        u => u.name === data.name && !u.userId
-      );
+    // --- ENSURE STRUCTURE ---
+    target.logs ??= [];
+    target.lastKnownNames ??= [];
+    if (target.active === undefined) target.active = null;
 
-      if (targetByName) {
-        for (const log of data.logs) {
-          if (!targetByName.logs.some(l => l.start === log.start && l.end === log.end)) {
-            targetByName.logs.push(log);
-          }
-        }
-        if (!targetByName.active && data.active) targetByName.active = data.active;
-        if (!targetByName.lastKnownNames.includes(data.name)) {
-          targetByName.lastKnownNames.push(data.name);
-        }
-        delete timesheet[key];
-        console.log(`✅ Merged old key ${key} → username match ${data.name}`);
+    // --- MERGE LOGS ---
+    for (const log of data.logs) {
+      if (
+        log?.start &&
+        log?.end &&
+        !target.logs.some(l => l.start === log.start && l.end === log.end)
+      ) {
+        target.logs.push(log);
       }
     }
+
+    // --- MERGE ACTIVE ---
+    if (!target.active && data.active) {
+      target.active = data.active;
+    }
+
+    // --- MERGE NAMES ---
+    if (data.name && !target.lastKnownNames.includes(data.name)) {
+      target.lastKnownNames.push(data.name);
+    }
+
+    // --- DELETE OLD KEY ---
+    delete timesheet[key];
+    console.log(`✅ Migrated ${key} → ${target.userId}`);
   }
 }
 
@@ -750,7 +747,18 @@ client.on("interactionCreate", async interaction => {
     await loadFromDisk();
   
     // options (all optional)
-    const targetUser = interaction.options.getUser("user") || interaction.user;
+    const requestedUser = interaction.options.getUser("user");
+    const targetUser = requestedUser || interaction.user;
+    
+    // permission check
+    if (
+      requestedUser &&
+      requestedUser.id !== interaction.user.id &&
+      !hasManagerRoleById(interaction.user.id)
+    ) {
+      return interaction.editReply("❌ You don’t have permission to view other users’ timesheets.");
+    }
+
     const startStr = interaction.options.getString("start");
     const endStr   = interaction.options.getString("end");
   
@@ -825,8 +833,7 @@ client.on("interactionCreate", async interaction => {
 // =======================
 (async () => {
   await loadFromGitHub();
-  autoMergeOldUsers();   // NOW works because timesheet exists
-  await persist();
+  await persist(); // persist already merges safely
 
   startKeepAlive();
   await client.login(process.env.DISCORD_TOKEN);
