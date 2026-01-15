@@ -30,6 +30,106 @@ client.on("error", (err) => {
   console.error("Discord client error:", err);
 });
 
+/**
+ * Safely merge an old username key into a new userId key.
+ * Preserves:
+ * - logs (appends without duplicates)
+ * - active
+ * - name
+ * - lastKnownNames
+ * Deletes old key ONLY if merge succeeds.
+ */
+function mergeUserData(oldKey, newUserId) {
+  const oldData = timesheet[oldKey];
+  if (!oldData) return; // nothing to merge
+
+  // If new userId doesn't exist, create it
+  if (!timesheet[newUserId]) {
+    timesheet[newUserId] = {
+      userId: newUserId,
+      name: oldData.name || oldKey,
+      lastKnownNames: oldData.lastKnownNames || [oldData.name || oldKey],
+      logs: [],
+      active: oldData.active || null,
+    };
+  }
+
+  const target = timesheet[newUserId];
+
+  // Merge logs (avoid duplicates)
+  const allLogs = [...(oldData.logs || []), ...(target.logs || [])];
+  const uniqueLogs = [];
+  const seen = new Set();
+  for (const log of allLogs) {
+    const key = `${log.start}|${log.end}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueLogs.push(log);
+    }
+  }
+  target.logs = uniqueLogs;
+
+  // Merge lastKnownNames
+  target.lastKnownNames = Array.from(
+    new Set([...(target.lastKnownNames || []), ...(oldData.lastKnownNames || []), oldData.name || oldKey])
+  );
+
+  // Preserve active if target.active is null
+  if (!target.active && oldData.active) {
+    target.active = oldData.active;
+  }
+
+  // Preserve name (keep target name if already set)
+  if (!target.name && oldData.name) {
+    target.name = oldData.name;
+  }
+
+  // Verify logs copied successfully
+  const origLogs = JSON.stringify(oldData.logs || []);
+  const newLogs = JSON.stringify(target.logs || []);
+  if (newLogs.includes(origLogs)) {
+    delete timesheet[oldKey];
+    console.log(`✅ Successfully merged ${oldKey} → ${newUserId}`);
+  } else {
+    console.error(`❌ Merge failed for ${oldKey}. Data mismatch.`);
+  }
+}
+// =======================
+// AUTO-MERGE OLD USER KEYS
+// =======================
+// =======================
+// AUTO-MERGE OLD USER KEYS
+// =======================
+function autoMergeOldUsers() {
+  const keys = Object.keys(timesheet);
+
+  for (const key of keys) {
+    const data = timesheet[key];
+
+    // Skip if already a proper userId entry
+    if (data.userId && data.userId === key) continue;
+
+    // If key is an old username entry and matches an existing userId
+    if (data.name && data.logs) {
+      // Try to find existing entry with same name
+      const targetKey = Object.keys(timesheet).find(
+        k => k !== key && timesheet[k].name === data.name
+      );
+
+      if (targetKey) {
+        // Merge into the userId entry
+        mergeUserData(key, targetKey);
+      } else if (data.userId) {
+        mergeUserData(key, data.userId);
+      }
+    }
+  }
+}
+
+
+// Run after loading GitHub timesheet
+autoMergeOldUsers();
+await persist();
 
 
 function formatSession(startISO, endISO) {
@@ -604,126 +704,61 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "timesheet") {
     const sub = interaction.options.getSubcommand(false);
   
-    // ===== RESET (MANAGER ONLY) =====
-    // ===== RESET (MANAGER ONLY, USERNAME-ONLY) =====
-    if (sub === "reset") {
-      let member = interaction.member;
-      if (!member) {
-        try {
-          member = await interaction.guild.members.fetch(interaction.user.id);
-        } catch {
-          member = null;
-        }
-      }
-      ;
-      
-      if (!hasManagerRoleById(interaction.user.id)) {
-        return interaction.editReply("❌ Managers only.");
-      }
-
-    
-      await loadFromDisk();
-
-      if (timesheet?.undefined) {
-        delete timesheet.undefined;
-        await persist();
-      }
-
-      // sanitize corrupted keys
-      if (timesheet.undefined) {
-        delete timesheet.undefined;
-      }
-    
-      let history = {};
-      try {
-        history = JSON.parse(
-          await fs.readFile("./timesheetHistory.json", "utf8")
-        );
-      } catch {}
-    
-      const stamp = new Date().toISOString();
-    
-      // DEEP COPY (important)
-      history[stamp] = JSON.parse(JSON.stringify(timesheet));
-    
-      await fs.writeFile(
-        "./timesheetHistory.json",
-        JSON.stringify(history, null, 2)
-      );
-    
-      // clear live timers
-      for (const timer of liveStatusTimers.values()) {
-        clearInterval(timer);
-      }
-      liveStatusTimers.clear();
-    
-      // reset timesheet
-      timesheet = {};
-      await persist();
-    
-      return interaction.editReply("✅ Timesheet reset & archived.");
-    }
-
+    if (sub !== "view") return;
   
-    // ===== VIEW =====
-    // ===== TIMESHEET VIEW (SELF / USER / DATE RANGE / BOTH) =====
     await loadFromDisk();
-
-    
+  
     // options (all optional)
-    const targetUser =
-      interaction.options.getUser("user") || interaction.user;
-    
+    const targetUser = interaction.options.getUser("user") || interaction.user;
     const startStr = interaction.options.getString("start");
     const endStr   = interaction.options.getString("end");
-    
+  
     // parse dates
     const start = parseDate(startStr);
     const end   = parseDate(endStr, true);
     const member = await safeGetMember(interaction, targetUser.id);
-
-    
+  
     const displayName =
       member?.displayName ||
       targetUser.globalName ||
       targetUser.username;
-    
+  
     // fetch record
     const record = timesheet[targetUser.id];
-    
+  
     if (!record || !Array.isArray(record.logs) || record.logs.length === 0) {
       return interaction.editReply("📭 No records found.");
     }
-    
+  
     // filter logs by date range
     let total = 0;
     let lines = [];
     let count = 0;
-    
+  
     for (const l of record.logs) {
       const sessionStart = new Date(l.start);
-    
+  
       if ((start && sessionStart < start) || (end && sessionStart > end)) continue;
-    
+  
       const hours = (new Date(l.end) - new Date(l.start)) / 3600000;
       total += hours;
       count++;
-    
+  
       lines.push(
         `**${count}.** ${formatSession(l.start, l.end)} — **${Math.round(hours * 100) / 100}h**`
       );
     }
-    
+  
     if (!count) {
       return interaction.editReply("📭 No sessions in the selected range.");
     }
-    
+  
     // range label
     const rangeLabel =
       startStr || endStr
         ? `${startStr || "Beginning"} → ${endStr || "Now"}`
         : "All time";
-    
+  
     // response
     return interaction.editReply({
       embeds: [{
@@ -734,21 +769,15 @@ client.on("interactionCreate", async interaction => {
           { name: "🆔 User ID", value: targetUser.id, inline: true },
           { name: "📅 Range", value: rangeLabel, inline: true },
           { name: "🧮 Sessions", value: String(count), inline: true },
-          {
-            name: "⏱ Total Hours",
-            value: `${Math.round(total * 100) / 100}h`,
-            inline: true,
-          },
-          {
-            name: "📋 Logs",
-            value: lines.join("\n"),
-            inline: false,
-          },
+          { name: "⏱ Total Hours", value: `${Math.round(total * 100) / 100}h`, inline: true },
+          { name: "📋 Logs", value: lines.join("\n"), inline: false },
         ],
         footer: { text: "Time Tracker" },
         timestamp: new Date().toISOString(),
       }],
     });
+  }
+
 
   }
 });  
