@@ -425,14 +425,6 @@ async function loadFromGitHub() {
   console.log("✅ Loaded timesheet from GitHub");
 }
 
-// =======================
-// PERSIST (DISK + QUEUED GIT)
-// =======================
-async function persist() {
-  await fs.writeFile(DATA_FILE, JSON.stringify(timesheet, null, 2));
-  queueGitCommit();
-}
-
 function queueGitCommit() {
   if (gitCommitTimer) return;
 
