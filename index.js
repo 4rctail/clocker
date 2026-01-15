@@ -777,17 +777,18 @@ client.on("interactionCreate", async interaction => {
       }],
     });
   }
-
-
-  }
 });  
 
 // =======================
 // STARTUP
 // =======================
 (async () => {
-  startKeepAlive();
   await loadFromGitHub();
+  autoMergeOldUsers();
+  await persist();
+
+  startKeepAlive();
   await client.login(process.env.DISCORD_TOKEN);
   console.log(`✅ Logged in as ${client.user.tag}`);
 })();
+
