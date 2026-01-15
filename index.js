@@ -31,26 +31,22 @@ client.on("error", (err) => {
 });
 
 function migrateUsernameTimesheetToUserId() {
-  const migrated = {};
   let changed = false;
+  const migrated = {};
 
   for (const [key, record] of Object.entries(timesheet)) {
-    // already migrated
-    if (record?.userId) {
-      migrated[record.userId] = record;
-      continue;
-    }
-
-    // legacy username-based record
-    if (record?.name && Array.isArray(record.logs)) {
+    if (!record.userId) {
+      // Legacy username-based record
       migrated[key] = {
-        userId: key, // TEMP until user clocks in again
+        userId: key,
         name: record.name,
-        lastKnownNames: [record.name],
-        logs: record.logs,
+        lastKnownNames: record.lastKnownNames || [record.name],
+        logs: record.logs || [],
         active: record.active ?? null,
       };
       changed = true;
+    } else {
+      migrated[key] = record; // already migrated
     }
   }
 
@@ -61,36 +57,35 @@ function migrateUsernameTimesheetToUserId() {
 }
 
 function mergeDuplicateUsers() {
-  for (const [key, record] of Object.entries(timesheet)) {
-    // Skip if key is already the userId
-    if (key === record.userId) continue;
+  const seen = {}; // userId → merged record
 
-    // If a record exists under the userId, merge logs
-    if (timesheet[record.userId]) {
-      const existing = timesheet[record.userId];
+  for (const key of Object.keys(timesheet)) {
+    const record = timesheet[key];
+    const id = record.userId;
 
-      // Merge logs
-      existing.logs = [...existing.logs, ...(record.logs || [])];
+    if (!seen[id]) {
+      // first time seeing this userId
+      seen[id] = { ...record, logs: [...(record.logs || [])] };
+    } else {
+      // merge logs
+      seen[id].logs.push(...(record.logs || []));
 
-      // Merge lastKnownNames
+      // merge lastKnownNames
       for (const n of record.lastKnownNames || []) {
-        if (!existing.lastKnownNames.includes(n)) {
-          existing.lastKnownNames.push(n);
+        if (!seen[id].lastKnownNames.includes(n)) {
+          seen[id].lastKnownNames.push(n);
         }
       }
 
-      // Merge active session if one exists
-      if (record.active) existing.active = record.active;
-
-      // Delete the old key
-      delete timesheet[key];
-    } else {
-      // Simply rename the key to userId
-      timesheet[record.userId] = record;
-      delete timesheet[key];
+      // merge active session
+      if (record.active) seen[id].active = record.active;
     }
   }
+
+  timesheet = seen;
+  console.log("🛠 Merged duplicate users");
 }
+
 
 function formatSession(startISO, endISO) {
   const dateOpts = {
