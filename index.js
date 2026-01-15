@@ -30,78 +30,6 @@ client.on("error", (err) => {
   console.error("Discord client error:", err);
 });
 
-function migrateUsernameTimesheetToUserId() {
-  let changed = false;
-  const migrated = {};
-
-  for (const [key, record] of Object.entries(timesheet)) {
-    if (!record.userId) {
-      // Legacy username-based record
-      migrated[key] = {
-        userId: key,
-        name: record.name,
-        lastKnownNames: record.lastKnownNames || [record.name],
-        logs: record.logs || [],
-        active: record.active ?? null,
-      };
-      changed = true;
-    } else {
-      migrated[key] = record; // already migrated
-    }
-  }
-
-  if (changed) {
-    timesheet = migrated;
-    console.log("🛠 Migrated legacy username-based timesheet");
-  }
-}
-
-function mergeDuplicateUsers() {
-  const seen = {}; // userId → merged record
-
-  for (const key of Object.keys(timesheet)) {
-    const record = timesheet[key];
-    const id = record.userId;
-
-    if (!id) continue; // skip corrupted keys
-
-    if (!seen[id]) {
-      // first time seeing this userId
-      seen[id] = { 
-        ...record, 
-        logs: Array.isArray(record.logs) ? [...record.logs] : [], 
-        lastKnownNames: Array.isArray(record.lastKnownNames) ? [...record.lastKnownNames] : [],
-        active: record.active ?? null,
-      };
-    } else {
-      // merge logs
-      if (Array.isArray(record.logs)) {
-        seen[id].logs.push(...record.logs);
-      }
-
-      // merge lastKnownNames
-      if (Array.isArray(record.lastKnownNames)) {
-        for (const n of record.lastKnownNames) {
-          if (n && !seen[id].lastKnownNames.includes(n)) {
-            seen[id].lastKnownNames.push(n);
-          }
-        }
-      }
-
-      // merge active session
-      if (record.active) seen[id].active = record.active;
-    }
-  }
-
-  // sort logs by start time (oldest → newest)
-  for (const rec of Object.values(seen)) {
-    rec.logs.sort((a, b) => new Date(a.start) - new Date(b.start));
-  }
-
-  timesheet = seen;
-  console.log("🛠 Merged duplicate users (fixed order)");
-}
-
 
 
 function formatSession(startISO, endISO) {
@@ -197,6 +125,7 @@ function ensureUserRecord(userId, name) {
   if (!userId || !name) return null;
 
   if (!timesheet[userId]) {
+    // create new record if doesn't exist
     timesheet[userId] = {
       userId,
       name,
@@ -209,7 +138,7 @@ function ensureUserRecord(userId, name) {
 
   const record = timesheet[userId];
 
-  // handle name change
+  // Update username if changed
   if (record.name !== name) {
     if (!record.lastKnownNames.includes(record.name)) {
       record.lastKnownNames.push(record.name);
@@ -217,12 +146,31 @@ function ensureUserRecord(userId, name) {
     record.name = name;
   }
 
-  // hard sanitize
+  // Ensure logs array and active are valid
   if (!Array.isArray(record.logs)) record.logs = [];
   if (record.active === undefined) record.active = null;
 
   return record;
 }
+
+/**
+ * Append new logs safely
+ * Only adds logs that are not duplicates (by start+end)
+ */
+function appendLogs(userId, newLogs) {
+  const record = timesheet[userId];
+  if (!record) return;
+
+  for (const log of newLogs) {
+    const exists = record.logs.some(
+      (l) => l.start === log.start && l.end === log.end
+    );
+    if (!exists) {
+      record.logs.push(log);
+    }
+  }
+}
+
 
 function parseDate(str, end = false) {
   if (!str) return null;
@@ -424,8 +372,7 @@ client.on("interactionCreate", async interaction => {
     // -------- TOTAL HOURS (ALL USERS) --------
     if (interaction.commandName === "totalhr") {
       await loadFromDisk();
-      migrateUsernameTimesheetToUserId();
-      mergeDuplicateUsers()
+
       let lines = [];
     
       for (const user of Object.values(timesheet)) {
@@ -462,8 +409,6 @@ client.on("interactionCreate", async interaction => {
   // -------- CLOCK IN --------
   if (interaction.commandName === "clockin") {
     await loadFromDisk();
-    migrateUsernameTimesheetToUserId();
-    mergeDuplicateUsers()
   
     const user = resolveStrictUser(interaction);
     if (!user) {
@@ -499,9 +444,7 @@ client.on("interactionCreate", async interaction => {
   // -------- CLOCK OUT (EMBED + DETAILS) --------
   if (interaction.commandName === "clockout") {
     await loadFromDisk();
-    migrateUsernameTimesheetToUserId();
-    mergeDuplicateUsers()
-    
+
     const user = resolveStrictUser(interaction);
     if (!user) {
       return interaction.editReply("❌ Cannot resolve user.");
@@ -553,8 +496,7 @@ client.on("interactionCreate", async interaction => {
   // -------- STATUS (SAFE, ID-ONLY, NO CRASHES) --------
   if (interaction.commandName === "status") {
     await loadFromDisk();
-    migrateUsernameTimesheetToUserId();
-    mergeDuplicateUsers()
+
   
     const uid = interaction.user.id;
     const record = timesheet[uid];
@@ -681,9 +623,7 @@ client.on("interactionCreate", async interaction => {
 
     
       await loadFromDisk();
-      migrateUsernameTimesheetToUserId();
-      mergeDuplicateUsers()
-      
+
       if (timesheet?.undefined) {
         delete timesheet.undefined;
         await persist();
@@ -728,8 +668,7 @@ client.on("interactionCreate", async interaction => {
     // ===== VIEW =====
     // ===== TIMESHEET VIEW (SELF / USER / DATE RANGE / BOTH) =====
     await loadFromDisk();
-    migrateUsernameTimesheetToUserId();
-    mergeDuplicateUsers()
+
     
     // options (all optional)
     const targetUser =
@@ -820,8 +759,6 @@ client.on("interactionCreate", async interaction => {
 (async () => {
   startKeepAlive();
   await loadFromGitHub();
-  migrateUsernameTimesheetToUserId();
-  mergeDuplicateUsers()
   await client.login(process.env.DISCORD_TOKEN);
   console.log(`✅ Logged in as ${client.user.tag}`);
 })();
