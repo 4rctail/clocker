@@ -97,6 +97,8 @@ function mergeUserData(oldKey, newUserId) {
 // =======================
 // AUTO-MERGE OLD USER KEYS
 // =======================
+let timesheet = {};  // <-- MUST be declared first
+let gitCommitTimer = null;
 // =======================
 // AUTO-MERGE OLD USER KEYS
 // =======================
@@ -307,11 +309,7 @@ function formatElapsedLive(startISO) {
 // Track live status updates per user
 const liveStatusTimers = new Map();
 
-// =======================
-// IN-MEMORY STATE
-// =======================
-let timesheet = {};
-let gitCommitTimer = null;
+
 
 // =======================
 // TIME HELPERS
@@ -784,7 +782,7 @@ client.on("interactionCreate", async interaction => {
 // =======================
 (async () => {
   await loadFromGitHub();
-  autoMergeOldUsers();
+  autoMergeOldUsers();   // NOW works because timesheet exists
   await persist();
 
   startKeepAlive();
