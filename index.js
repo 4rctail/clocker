@@ -294,6 +294,72 @@ function formatElapsedLive(startISO) {
 // Track live status updates per user
 const liveStatusTimers = new Map();
 
+/**
+ * Merge old username keys into proper userId entries before saving
+ */
+function mergeBeforePersist() {
+  const keys = Object.keys(timesheet);
+
+  for (const key of keys) {
+    const data = timesheet[key];
+
+    // Skip proper userId entries
+    if (data.userId && data.userId === key) continue;
+
+    // If key has logs and a name
+    if (data.name && Array.isArray(data.logs)) {
+      // Try to find a target by same userId
+      const targetById = Object.values(timesheet).find(
+        u => u.userId && u.userId === data.userId
+      );
+
+      if (targetById) {
+        // Merge logs and active
+        for (const log of data.logs) {
+          if (!targetById.logs.some(l => l.start === log.start && l.end === log.end)) {
+            targetById.logs.push(log);
+          }
+        }
+        if (!targetById.active && data.active) targetById.active = data.active;
+        if (!targetById.lastKnownNames.includes(data.name)) {
+          targetById.lastKnownNames.push(data.name);
+        }
+        delete timesheet[key];
+        console.log(`✅ Merged old key ${key} → ${targetById.userId}`);
+        continue;
+      }
+
+      // Otherwise, try matching by username with no userId
+      const targetByName = Object.values(timesheet).find(
+        u => u.name === data.name && !u.userId
+      );
+
+      if (targetByName) {
+        for (const log of data.logs) {
+          if (!targetByName.logs.some(l => l.start === log.start && l.end === log.end)) {
+            targetByName.logs.push(log);
+          }
+        }
+        if (!targetByName.active && data.active) targetByName.active = data.active;
+        if (!targetByName.lastKnownNames.includes(data.name)) {
+          targetByName.lastKnownNames.push(data.name);
+        }
+        delete timesheet[key];
+        console.log(`✅ Merged old key ${key} → username match ${data.name}`);
+      }
+    }
+  }
+}
+
+// =======================
+// Updated persist
+// =======================
+async function persist() {
+  mergeBeforePersist(); // merge before writing
+
+  await fs.writeFile(DATA_FILE, JSON.stringify(timesheet, null, 2));
+  queueGitCommit();
+}
 
 
 // =======================
