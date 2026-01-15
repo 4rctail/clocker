@@ -63,17 +63,28 @@ function mergeDuplicateUsers() {
     const record = timesheet[key];
     const id = record.userId;
 
+    if (!id) continue; // skip corrupted keys
+
     if (!seen[id]) {
       // first time seeing this userId
-      seen[id] = { ...record, logs: [...(record.logs || [])] };
+      seen[id] = { 
+        ...record, 
+        logs: Array.isArray(record.logs) ? [...record.logs] : [], 
+        lastKnownNames: Array.isArray(record.lastKnownNames) ? [...record.lastKnownNames] : [],
+        active: record.active ?? null,
+      };
     } else {
       // merge logs
-      seen[id].logs.push(...(record.logs || []));
+      if (Array.isArray(record.logs)) {
+        seen[id].logs.push(...record.logs);
+      }
 
       // merge lastKnownNames
-      for (const n of record.lastKnownNames || []) {
-        if (!seen[id].lastKnownNames.includes(n)) {
-          seen[id].lastKnownNames.push(n);
+      if (Array.isArray(record.lastKnownNames)) {
+        for (const n of record.lastKnownNames) {
+          if (n && !seen[id].lastKnownNames.includes(n)) {
+            seen[id].lastKnownNames.push(n);
+          }
         }
       }
 
@@ -82,9 +93,15 @@ function mergeDuplicateUsers() {
     }
   }
 
+  // sort logs by start time (oldest → newest)
+  for (const rec of Object.values(seen)) {
+    rec.logs.sort((a, b) => new Date(a.start) - new Date(b.start));
+  }
+
   timesheet = seen;
-  console.log("🛠 Merged duplicate users");
+  console.log("🛠 Merged duplicate users (fixed order)");
 }
+
 
 
 function formatSession(startISO, endISO) {
