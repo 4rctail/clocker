@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from "discord.js";
+0import { Client, GatewayIntentBits } from "discord.js";
 import fs from "fs/promises";
 import fetch from "node-fetch";
 import { startKeepAlive } from "./keepAlive.js";
@@ -29,6 +29,9 @@ const client = new Client({
 client.on("error", (err) => {
   console.error("Discord client error:", err);
 });
+
+let timesheet = {};
+let gitCommitTimer = null;
 
 function mergeUserData(oldKey, newUserId) {
   const oldData = timesheet[oldKey];
