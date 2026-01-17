@@ -251,12 +251,10 @@ function appendLogs(userId, newLogs) {
 }
 
 
-function parseDate(str, end = false) {
+function parseDatePH(str, end = false) {
   if (!str) return null;
 
-  // REMOVE commas, trim spaces
   str = str.replace(/,/g, "").trim();
-
   const parts = str.split("/");
   if (parts.length !== 3) return null;
 
@@ -264,24 +262,18 @@ function parseDate(str, end = false) {
   const d = Number(parts[1]);
   const y = Number(parts[2]);
 
-  if (
-    !Number.isInteger(m) ||
-    !Number.isInteger(d) ||
-    !Number.isInteger(y)
-  ) return null;
+  if (!Number.isInteger(m) || !Number.isInteger(d) || !Number.isInteger(y)) {
+    return null;
+  }
 
-  const date = new Date(y, m - 1, d);
-  if (end) date.setHours(23, 59, 59, 999);
-  return date;
+  // Create PH midnight explicitly, then convert to UTC
+  const phDate = new Date(
+    Date.UTC(y, m - 1, d, end ? 15 : -8, end ? 59 : 0, end ? 59 : 0, end ? 999 : 0)
+  );
+
+  return phDate;
 }
 
-function formatElapsedLive(startISO) {
-  const diff = Date.now() - new Date(startISO).getTime();
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  return `${h}h ${m}m ${s}s`;
-}
 
 // Track live status updates per user
 const liveStatusTimers = new Map();
@@ -763,8 +755,9 @@ client.on("interactionCreate", async interaction => {
     const endStr   = interaction.options.getString("end");
   
     // parse dates
-    const start = parseDate(startStr);
-    const end   = parseDate(endStr, true);
+    const start = parseDatePH(startStr);
+    const end   = parseDatePH(endStr, true);
+
     const member = await safeGetMember(interaction, targetUser.id);
   
     const displayName =
