@@ -632,6 +632,47 @@ client.on("interactionCreate", async interaction => {
     }
 
 
+    // -------- CLOCK IN --------
+    if (interaction.commandName === "clockin") {
+      await loadFromDisk();
+    
+      const user = resolveStrictUser(interaction);
+      if (!user) {
+        return interaction.editReply("❌ Cannot resolve user.");
+      }
+    
+      const record = ensureUserRecord(user.userId, user.name);
+    
+      if (record.active) {
+        return interaction.editReply("⚠️ You are already clocked in.");
+      }
+    
+      // Clock-in time = now in PH timezone
+      const now = new Date();
+      const phNow = new Date(
+        now.toLocaleString("en-US", { timeZone: PH_TZ })
+      );
+      record.active = phNow.toISOString();
+    
+      await persist();
+    
+      return interaction.editReply({
+        embeds: [{
+          title: "🟢 Clocked In",
+          color: 0x2ecc71,
+          fields: [
+            { name: "👤 User", value: record.name, inline: true },
+            { name: "▶️ Started", value: formatDate(record.active), inline: false },
+            {
+              name: "⚠️ Reminder",
+              value: "**REMINDER: UPDATE AD SPENT**",
+              inline: false,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
 
   // -------- CLOCK OUT --------
   // -------- CLOCK OUT (EMBED + DETAILS) --------
