@@ -682,8 +682,8 @@ client.on("interactionCreate", async interaction => {
         return new Date(year, month - 1, day, h, m);
       };
   
-      const newStart = parseTime(startStr);
-      const newEnd = parseTime(endStr);
+      const newStart = parseDatePH(startStr);
+      const newEnd = parseDatePH(endStr);
   
       if (!newStart || !newEnd || newStart >= newEnd) {
         return interaction.editReply("❌ Invalid times. Ensure start < end and format is HH:MM.");
