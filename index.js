@@ -973,7 +973,6 @@ client.on("interactionCreate", async interaction => {
         footer: { text: "Time Tracker" },
         timestamp: new Date().toISOString(),
       }],
-      }
     });
   }
 });  
