@@ -635,75 +635,6 @@ client.on("interactionCreate", async interaction => {
       }],
     });
   }
-  // -------- TIMESHEET EDIT (MANAGER ONLY) --------
-  if (interaction.commandName === "edit") {
-    await loadFromDisk();
-  
-    await interaction.deferReply({ ephemeral: true }); // defer first
-  
-    // manager-only check
-    if (!hasManagerRoleById(interaction.user.id)) {
-      return interaction.editReply("❌ Managers only.");
-    }
-  
-    const targetUser = interaction.options.getUser("user");
-    const sessionNumber = interaction.options.getInteger("session");
-    const startISO = interaction.options.getString("start");
-    const endISO = interaction.options.getString("end");
-  
-    if (!targetUser || !sessionNumber) {
-      return interaction.editReply("❌ Missing user or session number.");
-    }
-  
-    const record = timesheet[targetUser.id];
-    if (!record || !Array.isArray(record.logs)) {
-      return interaction.editReply("❌ No logs found for that user.");
-    }
-  
-    // count sessions from top → bottom
-    const index = record.logs.length - sessionNumber; // top-most session = 1
-    if (index < 0 || index >= record.logs.length) {
-      return interaction.editReply("❌ Invalid session number.");
-    }
-  
-    const log = record.logs[index];
-  
-    const newStart = startISO ? new Date(startISO) : new Date(log.start);
-    const newEnd = endISO ? new Date(endISO) : new Date(log.end);
-  
-    if (isNaN(newStart) || isNaN(newEnd) || newEnd <= newStart) {
-      return interaction.editReply("❌ Invalid start/end time.");
-    }
-  
-    const hours = diffHours(newStart.toISOString(), newEnd.toISOString());
-  
-    log.start = newStart.toISOString();
-    log.end = newEnd.toISOString();
-    log.hours = Math.round(hours * 100) / 100;
-  
-    await persist();
-  
-    return interaction.editReply({
-      embeds: [{
-        title: "✏️ Timesheet Edited",
-        color: 0xf1c40f,
-        fields: [
-          { name: "👤 User", value: record.name, inline: true },
-          { name: "📌 Session", value: String(sessionNumber), inline: true },
-          { name: "▶️ Start", value: formatDate(log.start) },
-          { name: "⏹ End", value: formatDate(log.end) },
-          { name: "⏱ Hours", value: `${log.hours}h`, inline: true },
-          {
-            name: "👮 Edited by",
-            value: interaction.member?.displayName || interaction.user.username,
-            inline: true,
-          },
-        ],
-        timestamp: new Date().toISOString(),
-      }],
-    });
-  }
-});
 
 
 
@@ -782,130 +713,115 @@ client.on("interactionCreate", async interaction => {
 
   
       liveStatusTimers.set(uid, timer);
+      return;
+    }
   
     // ===== CLOCKED OUT =====
-    if (record?.active) {
-      // clocked-in logic...
-      await safeEdit(interaction, { embeds: [buildEmbed()] });
-    
-      const timer = setInterval(async () => {
-        if (!timesheet[uid]?.active) {
-          clearInterval(timer);
-          liveStatusTimers.delete(uid);
-          return;
-        }
-        const embed = buildEmbed();
-        await safeEdit(interaction, { embeds: [embed] });
-      }, 5000);
-    
-      liveStatusTimers.set(uid, timer);
-    } else {
-      // CLOCKED OUT
-      const total = record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
-    
-      await interaction.editReply({
-        embeds: [{
-          title: "⚪ Status: Clocked Out",
-          color: 0x95a5a6,
-          fields: [
-            {
-              name: "👤 User",
-              value:
-                interaction.member?.displayName ||
-                interaction.user.globalName ||
-                interaction.user.username,
-              inline: true,
-            },
-            {
-              name: "⏱ Total Recorded Time",
-              value: `${Math.round(total * 100) / 100}h`,
-              inline: true,
-            },
-          ],
-          footer: { text: "No active session" },
-          timestamp: new Date().toISOString(),
-        }],
-      });
-    }
-
+    const total =
+      record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
+  
+    return interaction.editReply({
+      embeds: [{
+        title: "⚪ Status: Clocked Out",
+        color: 0x95a5a6,
+        fields: [
+          {
+            name: "👤 User",
+            value:
+              interaction.member?.displayName ||
+              interaction.user.globalName ||
+              interaction.user.username,
+            inline: true,
+          },
+          {
+            name: "⏱ Total Recorded Time",
+            value: `${Math.round(total * 100) / 100}h`,
+            inline: true,
+          },
+        ],
+        footer: { text: "No active session" },
+        timestamp: new Date().toISOString(),
+      }],
+    });
+  }
 
     // -------- FORCE CLOCK OUT (MANAGER ONLY | CRASH SAFE) --------
-    client.on("interactionCreate", async (interaction) => {
-      if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === "forceclockout") {
+      try {
+        await loadFromDisk();
     
-      if (interaction.commandName === "forceclockout") {
-        try {
-          await loadFromDisk();
-    
-          // permission check
-          if (!hasManagerRoleById(interaction.user.id)) {
-            await interaction.editReply("❌ You are not allowed to force clock-out users.");
-            return; // <-- just exit the function here
-          }
-    
-          const targetUser = interaction.options.getUser("user");
-    
-          if (!targetUser) {
-            await interaction.editReply("❌ No user provided. Please re-run the command.");
-            return;
-          }
-    
-          const record = timesheet[targetUser.id];
-    
-          if (!record || !record.active) {
-            await interaction.editReply("⚠️ That user is not currently clocked in.");
-            return;
-          }
-    
-          const start = record.active;
-          const end = nowISO();
-          const hours = diffHours(start, end);
-          const rounded = Math.round(hours * 100) / 100;
-    
-          record.logs.push({ start, end, hours });
-          record.active = null;
-    
-          await persist();
-    
-          const member = await safeGetMember(interaction, targetUser.id);
-          const displayName =
-            member?.displayName ||
-            targetUser.globalName ||
-            targetUser.username;
-    
-          await interaction.editReply({
-            embeds: [{
-              title: "⛔ Force Clock-Out",
-              color: 0xe67e22,
-              fields: [
-                { name: "👤 User", value: displayName, inline: true },
-                { name: "🆔 User ID", value: targetUser.id, inline: true },
-                { name: "▶️ Started", value: formatDate(start) },
-                { name: "⏹ Ended", value: formatDate(end) },
-                { name: "⏱ Duration", value: `${rounded}h`, inline: true },
-                {
-                  name: "👮 Forced by",
-                  value: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
-                  inline: true,
-                },
-              ],
-              timestamp: new Date().toISOString(),
-            }],
-          });
-        } catch (err) {
-          console.error("ForceClockOut failed:", err);
-          await safeEdit(interaction, "❌ Force clock-out failed due to an internal error.");
+        // permission check
+        if (!hasManagerRoleById(interaction.user.id)) {
+          return interaction.editReply("❌ You are not allowed to force clock-out users.");
         }
+    
+        const targetUser = interaction.options.getUser("user");
+    
+        // 🚨 HARD GUARD (THIS FIXES THE HANG)
+        if (!targetUser) {
+          return interaction.editReply("❌ No user provided. Please re-run the command.");
+        }
+    
+        const record = timesheet[targetUser.id];
+    
+        if (!record || !record.active) {
+          return interaction.editReply("⚠️ That user is not currently clocked in.");
+        }
+    
+        const start = record.active;
+        const end = nowISO();
+        const hours = diffHours(start, end);
+        const rounded = Math.round(hours * 100) / 100;
+    
+        record.logs.push({ start, end, hours });
+        record.active = null;
+    
+        await persist();
+    
+        const member = await safeGetMember(interaction, targetUser.id);
+    
+        const displayName =
+          member?.displayName ||
+          targetUser.globalName ||
+          targetUser.username;
+    
+        return interaction.editReply({
+          embeds: [{
+            title: "⛔ Force Clock-Out",
+            color: 0xe67e22,
+            fields: [
+              { name: "👤 User", value: displayName, inline: true },
+              { name: "🆔 User ID", value: targetUser.id, inline: true },
+              { name: "▶️ Started", value: formatDate(start) },
+              { name: "⏹ Ended", value: formatDate(end) },
+              { name: "⏱ Duration", value: `${rounded}h`, inline: true },
+              {
+                name: "👮 Forced by",
+                value:
+                  interaction.member?.displayName ||
+                  interaction.user.globalName ||
+                  interaction.user.username,
+                inline: true,
+              },
+            ],
+            timestamp: new Date().toISOString(),
+          }],
+        });
+    
+      } catch (err) {
+        console.error("ForceClockOut failed:", err);
+    
+        // ensure Discord always gets a response
+        return safeEdit(interaction, "❌ Force clock-out failed due to an internal error.");
       }
-    });
+    }
 
 
   // -------- TIMESHEET --------
   if (interaction.commandName === "timesheet") {
     const sub = interaction.options.getSubcommand(false);
   
-    if (sub !== "view") 
-      return;
+    if (sub !== "view") return;
   
     await loadFromDisk();
   
