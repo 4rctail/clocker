@@ -905,7 +905,7 @@ client.on("interactionCreate", async interaction => {
     const sub = interaction.options.getSubcommand(false);
   
     if (sub !== "view") 
-    return;
+      return;
   
     await loadFromDisk();
   
