@@ -500,6 +500,15 @@ client.on("interactionCreate", async interaction => {
       ephemeral: true,
     });
   }
+  if (
+    interaction.commandName === "forceclockout" &&
+    !interaction.options.data.length
+  ) {
+    return interaction.reply({
+      content: "❌ Command schema out of sync. Please redeploy commands.",
+      ephemeral: true,
+    });
+  }
 
   await interaction.deferReply();
   
