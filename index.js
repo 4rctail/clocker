@@ -582,7 +582,7 @@ client.on("interactionCreate", async interaction => {
     // -------- TOTAL HOURS (ALL USERS) --------
     if (interaction.commandName === "totalhr") {
       await loadFromDisk();
-
+    
       let lines = [];
     
       for (const user of Object.values(timesheet)) {
@@ -596,7 +596,19 @@ client.on("interactionCreate", async interaction => {
         total = Math.round(total * 100) / 100;
         if (total <= 0) continue;
     
-        lines.push(`**${user.name}** — ${total.toFixed(2)}h`);
+        // Try to fetch member in the guild
+        let displayName = user.name; // fallback
+        if (interaction.guild) {
+          const member = interaction.guild.members.cache.get(user.userId) ||
+                         await interaction.guild.members.fetch(user.userId).catch(() => null);
+          if (member) {
+            displayName = `${member.displayName} (${member.user.username})`;
+          } else {
+            displayName = `${user.name} (Unknown username)`;
+          }
+        }
+    
+        lines.push(`**${displayName}** — ${total.toFixed(2)}h`);
       }
     
       if (!lines.length) {
@@ -613,40 +625,6 @@ client.on("interactionCreate", async interaction => {
         }],
       });
     }
-
-
-
-  // -------- CLOCK IN --------
-  if (interaction.commandName === "clockin") {
-    await loadFromDisk();
-  
-    const user = resolveStrictUser(interaction);
-    if (!user) {
-      return interaction.editReply("❌ Cannot resolve user.");
-    }
-  
-    const record = ensureUserRecord(user.userId, user.name);
-  
-    if (record.active) {
-      return interaction.editReply("❌ Already clocked in.");
-    }
-  
-    record.active = nowISO();
-    await persist();
-  
-    return interaction.editReply({
-      embeds: [{
-        title: "🟢 Clocked In",
-        color: 0x2ecc71,
-        fields: [
-          { name: "👤 User", value: record.name },
-          { name: "🆔 User ID", value: record.userId },
-          { name: "⏱ Start", value: formatDate(record.active) },
-        ],
-        timestamp: new Date().toISOString(),
-      }],
-    });
-  }
 
 
 
