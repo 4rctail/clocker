@@ -904,6 +904,79 @@ client.on("interactionCreate", async interaction => {
         footer: { text: "Time Tracker" },
         timestamp: new Date().toISOString(),
       }],
+      // -------- TIMESHEET EDIT (MANAGER ONLY) --------
+      if (interaction.commandName === "timesheet") {
+        const sub = interaction.options.getSubcommand(false);
+      
+        if (sub === "edit") {
+          await loadFromDisk();
+      
+          // permission
+          if (!hasManagerRoleById(interaction.user.id)) {
+            return interaction.editReply("❌ Managers only.");
+          }
+      
+          const user = interaction.options.getUser("user");
+          const index = interaction.options.getInteger("session") - 1;
+          const startStr = interaction.options.getString("start");
+          const endStr = interaction.options.getString("end");
+      
+          const record = timesheet[user.id];
+      
+          if (!record || !Array.isArray(record.logs)) {
+            return interaction.editReply("❌ No logs found for that user.");
+          }
+      
+          if (index < 0 || index >= record.logs.length) {
+            return interaction.editReply("❌ Invalid session number.");
+          }
+      
+          const log = record.logs[index];
+      
+          const newStart = startStr
+            ? parseDateTimePH(startStr)
+            : new Date(log.start);
+      
+          const newEnd = endStr
+            ? parseDateTimePH(endStr)
+            : new Date(log.end);
+      
+          if (!newStart || !newEnd || newEnd <= newStart) {
+            return interaction.editReply("❌ Invalid start/end time.");
+          }
+      
+          const hours = diffHours(newStart.toISOString(), newEnd.toISOString());
+      
+          // APPLY EDIT
+          log.start = newStart.toISOString();
+          log.end = newEnd.toISOString();
+          log.hours = Math.round(hours * 100) / 100;
+      
+          await persist();
+      
+          return interaction.editReply({
+            embeds: [{
+              title: "✏️ Timesheet Edited",
+              color: 0xf1c40f,
+              fields: [
+                { name: "👤 User", value: record.name, inline: true },
+                { name: "📌 Session", value: String(index + 1), inline: true },
+                { name: "▶️ Start", value: formatDate(log.start) },
+                { name: "⏹ End", value: formatDate(log.end) },
+                { name: "⏱ Hours", value: `${log.hours}h`, inline: true },
+                {
+                  name: "👮 Edited by",
+                  value:
+                    interaction.member?.displayName ||
+                    interaction.user.username,
+                  inline: true,
+                },
+              ],
+              timestamp: new Date().toISOString(),
+            }],
+          });
+        }
+      }
     });
   }
 });  
