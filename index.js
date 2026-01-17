@@ -904,7 +904,8 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "timesheet") {
     const sub = interaction.options.getSubcommand(false);
   
-    if (sub !== "view") return;
+    if (sub !== "view") 
+    return;
   
     await loadFromDisk();
   
