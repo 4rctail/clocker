@@ -975,6 +975,7 @@ client.on("interactionCreate", async interaction => {
         timestamp: new Date().toISOString(),
       }],
       }
+      }
     });
   }
 });  
