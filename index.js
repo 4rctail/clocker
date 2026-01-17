@@ -636,79 +636,74 @@ client.on("interactionCreate", async interaction => {
     });
   }
   // -------- TIMESHEET EDIT (MANAGER ONLY) --------
-  client.on("interactionCreate", async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === "edit") {
+    await loadFromDisk();
   
-    // --- /edit COMMAND ---
-    if (interaction.commandName === "edit") {
-      await loadFromDisk();
-    
-      await interaction.deferReply({ ephemeral: true }); // ✅ defer first
-    
-      // manager-only check
-      if (!hasManagerRoleById(interaction.user.id)) {
-        return interaction.editReply("❌ Managers only.");
-      }
-    
-      const targetUser = interaction.options.getUser("user");
-      const sessionNumber = interaction.options.getInteger("session");
-      const startISO = interaction.options.getString("start");
-      const endISO = interaction.options.getString("end");
-    
-      if (!targetUser || !sessionNumber) {
-        return interaction.editReply("❌ Missing user or session number.");
-      }
-    
-      const record = timesheet[targetUser.id];
-      if (!record || !Array.isArray(record.logs)) {
-        return interaction.editReply("❌ No logs found for that user.");
-      }
-    
-      // count sessions from top → bottom
-      const index = record.logs.length - sessionNumber; // top-most session = 1
-      if (index < 0 || index >= record.logs.length) {
-        return interaction.editReply("❌ Invalid session number.");
-      }
-    
-      const log = record.logs[index];
-    
-      const newStart = startISO ? new Date(startISO) : new Date(log.start);
-      const newEnd = endISO ? new Date(endISO) : new Date(log.end);
-    
-      if (isNaN(newStart) || isNaN(newEnd) || newEnd <= newStart) {
-        return interaction.editReply("❌ Invalid start/end time.");
-      }
-    
-      const hours = diffHours(newStart.toISOString(), newEnd.toISOString());
-    
-      log.start = newStart.toISOString();
-      log.end = newEnd.toISOString();
-      log.hours = Math.round(hours * 100) / 100;
-    
-      await persist();
-    
-      return interaction.editReply({
-        embeds: [{
-          title: "✏️ Timesheet Edited",
-          color: 0xf1c40f,
-          fields: [
-            { name: "👤 User", value: record.name, inline: true },
-            { name: "📌 Session", value: String(sessionNumber), inline: true },
-            { name: "▶️ Start", value: formatDate(log.start) },
-            { name: "⏹ End", value: formatDate(log.end) },
-            { name: "⏱ Hours", value: `${log.hours}h`, inline: true },
-            {
-              name: "👮 Edited by",
-              value: interaction.member?.displayName || interaction.user.username,
-              inline: true,
-            },
-          ],
-          timestamp: new Date().toISOString(),
-        }],
-      });
+    await interaction.deferReply({ ephemeral: true }); // defer first
+  
+    // manager-only check
+    if (!hasManagerRoleById(interaction.user.id)) {
+      return interaction.editReply("❌ Managers only.");
     }
-
-  });
+  
+    const targetUser = interaction.options.getUser("user");
+    const sessionNumber = interaction.options.getInteger("session");
+    const startISO = interaction.options.getString("start");
+    const endISO = interaction.options.getString("end");
+  
+    if (!targetUser || !sessionNumber) {
+      return interaction.editReply("❌ Missing user or session number.");
+    }
+  
+    const record = timesheet[targetUser.id];
+    if (!record || !Array.isArray(record.logs)) {
+      return interaction.editReply("❌ No logs found for that user.");
+    }
+  
+    // count sessions from top → bottom
+    const index = record.logs.length - sessionNumber; // top-most session = 1
+    if (index < 0 || index >= record.logs.length) {
+      return interaction.editReply("❌ Invalid session number.");
+    }
+  
+    const log = record.logs[index];
+  
+    const newStart = startISO ? new Date(startISO) : new Date(log.start);
+    const newEnd = endISO ? new Date(endISO) : new Date(log.end);
+  
+    if (isNaN(newStart) || isNaN(newEnd) || newEnd <= newStart) {
+      return interaction.editReply("❌ Invalid start/end time.");
+    }
+  
+    const hours = diffHours(newStart.toISOString(), newEnd.toISOString());
+  
+    log.start = newStart.toISOString();
+    log.end = newEnd.toISOString();
+    log.hours = Math.round(hours * 100) / 100;
+  
+    await persist();
+  
+    return interaction.editReply({
+      embeds: [{
+        title: "✏️ Timesheet Edited",
+        color: 0xf1c40f,
+        fields: [
+          { name: "👤 User", value: record.name, inline: true },
+          { name: "📌 Session", value: String(sessionNumber), inline: true },
+          { name: "▶️ Start", value: formatDate(log.start) },
+          { name: "⏹ End", value: formatDate(log.end) },
+          { name: "⏱ Hours", value: `${log.hours}h`, inline: true },
+          {
+            name: "👮 Edited by",
+            value: interaction.member?.displayName || interaction.user.username,
+            inline: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      }],
+    });
+  }
+});
 
 
 
