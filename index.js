@@ -9,6 +9,7 @@ import { startKeepAlive } from "./keepAlive.js";
 const PH_TZ = "Asia/Manila";
 const DATA_FILE = "./timesheet.json";
 const MANAGER_IDS = ["769554444534153238", "854713123851337758","921936530778517614"];
+const LEADER_IDS = ["769554444534153238", "854713123851337758","921936530778517614","1452657680090136664","726049317256691734","385856951114006528","1401902812299919520"];
 const GIT_TOKEN = process.env.GIT_TOKEN;
 const GIT_USER = process.env.GIT_USER;
 const GIT_REPO = process.env.GIT_REPO;
@@ -548,6 +549,10 @@ function hasManagerRoleById(userId) {
   return MANAGER_IDS.includes(userId);
 }
 
+function hasLeaderRoleById(userId) {
+  return LEADER_IDS.includes(userId);
+}
+
 process.on("unhandledRejection", err => {
   console.error("Unhandled rejection:", err);
 });
@@ -880,8 +885,8 @@ client.on("interactionCreate", async interaction => {
         await loadFromDisk();
     
         // permission check
-        if (!hasManagerRoleById(interaction.user.id)) {
-          return interaction.editReply("❌ You are not allowed to force clock-out users.");
+        if (!hasLeaderRoleById(interaction.user.id)) {
+          return interaction.editReply("❌ Only leaders can force clock-out users.");
         }
     
         const targetUser = interaction.options.getUser("user");
