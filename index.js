@@ -633,6 +633,7 @@ client.on("interactionCreate", async interaction => {
 
 
     // -------- CLOCK IN --------
+    // -------- CLOCK IN --------
     if (interaction.commandName === "clockin") {
       await loadFromDisk();
     
@@ -644,16 +645,10 @@ client.on("interactionCreate", async interaction => {
       const record = ensureUserRecord(user.userId, user.name);
     
       if (record.active) {
-        return interaction.editReply("⚠️ You are already clocked in.");
+        return interaction.editReply("❌ Already clocked in.");
       }
     
-      // Clock-in time = now in PH timezone
-      const now = new Date();
-      const phNow = new Date(
-        now.toLocaleString("en-US", { timeZone: PH_TZ })
-      );
-      record.active = phNow.toISOString();
-    
+      record.active = nowISO();
       await persist();
     
       return interaction.editReply({
@@ -661,13 +656,9 @@ client.on("interactionCreate", async interaction => {
           title: "🟢 Clocked In",
           color: 0x2ecc71,
           fields: [
-            { name: "👤 User", value: record.name, inline: true },
-            { name: "▶️ Started", value: formatDate(record.active), inline: false },
-            {
-              name: "⚠️ Reminder",
-              value: "**REMINDER: UPDATE AD SPENT**",
-              inline: false,
-            },
+            { name: "👤 User", value: record.name },
+            { name: "🆔 User ID", value: record.userId },
+            { name: "⏱ Start", value: formatDate(record.active) },
           ],
           timestamp: new Date().toISOString(),
         }],
