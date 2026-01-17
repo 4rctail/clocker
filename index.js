@@ -830,75 +830,75 @@ client.on("interactionCreate", async interaction => {
 
 
     // -------- FORCE CLOCK OUT (MANAGER ONLY | CRASH SAFE) --------
-    if (interaction.commandName === "forceclockout") {
-      try {
-        await loadFromDisk();
+    client.on("interactionCreate", async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
     
-        // permission check
-        if (!hasManagerRoleById(interaction.user.id)) {
-          return interaction.editReply("❌ You are not allowed to force clock-out users.");
+      if (interaction.commandName === "forceclockout") {
+        try {
+          await loadFromDisk();
+    
+          // permission check
+          if (!hasManagerRoleById(interaction.user.id)) {
+            await interaction.editReply("❌ You are not allowed to force clock-out users.");
+            return; // <-- just exit the function here
+          }
+    
+          const targetUser = interaction.options.getUser("user");
+    
+          if (!targetUser) {
+            await interaction.editReply("❌ No user provided. Please re-run the command.");
+            return;
+          }
+    
+          const record = timesheet[targetUser.id];
+    
+          if (!record || !record.active) {
+            await interaction.editReply("⚠️ That user is not currently clocked in.");
+            return;
+          }
+    
+          const start = record.active;
+          const end = nowISO();
+          const hours = diffHours(start, end);
+          const rounded = Math.round(hours * 100) / 100;
+    
+          record.logs.push({ start, end, hours });
+          record.active = null;
+    
+          await persist();
+    
+          const member = await safeGetMember(interaction, targetUser.id);
+          const displayName =
+            member?.displayName ||
+            targetUser.globalName ||
+            targetUser.username;
+    
+          await interaction.editReply({
+            embeds: [{
+              title: "⛔ Force Clock-Out",
+              color: 0xe67e22,
+              fields: [
+                { name: "👤 User", value: displayName, inline: true },
+                { name: "🆔 User ID", value: targetUser.id, inline: true },
+                { name: "▶️ Started", value: formatDate(start) },
+                { name: "⏹ Ended", value: formatDate(end) },
+                { name: "⏱ Duration", value: `${rounded}h`, inline: true },
+                {
+                  name: "👮 Forced by",
+                  value: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
+                  inline: true,
+                },
+              ],
+              timestamp: new Date().toISOString(),
+            }],
+          });
+        } catch (err) {
+          console.error("ForceClockOut failed:", err);
+          await safeEdit(interaction, "❌ Force clock-out failed due to an internal error.");
         }
-    
-        const targetUser = interaction.options.getUser("user");
-    
-        // 🚨 HARD GUARD (THIS FIXES THE HANG)
-        if (!targetUser) {
-          return interaction.editReply("❌ No user provided. Please re-run the command.");
-        }
-    
-        const record = timesheet[targetUser.id];
-    
-        if (!record || !record.active) {
-          return interaction.editReply("⚠️ That user is not currently clocked in.");
-        }
-    
-        const start = record.active;
-        const end = nowISO();
-        const hours = diffHours(start, end);
-        const rounded = Math.round(hours * 100) / 100;
-    
-        record.logs.push({ start, end, hours });
-        record.active = null;
-    
-        await persist();
-    
-        const member = await safeGetMember(interaction, targetUser.id);
-    
-        const displayName =
-          member?.displayName ||
-          targetUser.globalName ||
-          targetUser.username;
-    
-        return interaction.editReply({
-          embeds: [{
-            title: "⛔ Force Clock-Out",
-            color: 0xe67e22,
-            fields: [
-              { name: "👤 User", value: displayName, inline: true },
-              { name: "🆔 User ID", value: targetUser.id, inline: true },
-              { name: "▶️ Started", value: formatDate(start) },
-              { name: "⏹ Ended", value: formatDate(end) },
-              { name: "⏱ Duration", value: `${rounded}h`, inline: true },
-              {
-                name: "👮 Forced by",
-                value:
-                  interaction.member?.displayName ||
-                  interaction.user.globalName ||
-                  interaction.user.username,
-                inline: true,
-              },
-            ],
-            timestamp: new Date().toISOString(),
-          }],
-        });
-    
-      } catch (err) {
-        console.error("ForceClockOut failed:", err);
-    
-        // ensure Discord always gets a response
-        return safeEdit(interaction, "❌ Force clock-out failed due to an internal error.");
       }
-    }
+    });
+
 
   // -------- TIMESHEET --------
   if (interaction.commandName === "timesheet") {
