@@ -256,6 +256,70 @@ function appendLogs(userId, newLogs) {
     }
   }
 }
+/**
+ * Parse HH:MM string into a Date in PH timezone on a given date.
+ * If dateStr is provided (MM/DD/YYYY), use that day; otherwise today.
+ */
+function parsePHTime(timeStr, dateStr) {
+  if (!timeStr) return null;
+
+  let dateObj = new Date();
+  if (dateStr) {
+    const [m, d, y] = dateStr.split("/").map(Number);
+    if (!m || !d || !y) return null;
+    dateObj = new Date(y, m - 1, d);
+  }
+
+  const [h, min] = timeStr.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(min)) return null;
+
+  // PH = UTC+8 → adjust UTC so stored date is correct
+  const utcDate = new Date(Date.UTC(
+    dateObj.getFullYear(),
+    dateObj.getMonth(),
+    dateObj.getDate(),
+    h - 8, // offset PH → UTC
+    min,
+    0,
+    0
+  ));
+
+  return utcDate;
+}
+/**
+ * Format a UTC ISO string for display in PH timezone
+ */
+function formatPH(isoStr) {
+  return new Date(isoStr).toLocaleString("en-PH", {
+    timeZone: PH_TZ,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/**
+ * Format session start/end
+ */
+function formatSessionPH(startISO, endISO) {
+  const s = new Date(startISO);
+  const e = new Date(endISO);
+
+  const dateOpts = { timeZone: PH_TZ, month: "long", day: "numeric", year: "numeric" };
+  const timeOpts = { timeZone: PH_TZ, hour: "numeric", minute: "2-digit" };
+
+  const sameDay = s.toLocaleDateString("en-PH", dateOpts) === e.toLocaleDateString("en-PH", dateOpts);
+  const datePart = sameDay
+    ? s.toLocaleDateString("en-PH", dateOpts)
+    : `${s.toLocaleDateString("en-PH", dateOpts)} – ${e.toLocaleDateString("en-PH", dateOpts)}`;
+
+  const timePart = `${s.toLocaleTimeString("en-PH", timeOpts)} - ${e.toLocaleTimeString("en-PH", timeOpts)}`;
+
+  return `${datePart}, ${timePart}`;
+}
 
 
 function parseDatePH(str, end = false) {
@@ -682,8 +746,8 @@ client.on("interactionCreate", async interaction => {
         return new Date(year, month - 1, day, h, m);
       };
   
-      const newStart = parseDatePH(startStr);
-      const newEnd = parseDatePH(endStr);
+      const newStart = parsePHTime(startStr);
+      const newEnd = parsePHTime(endStr);
   
       if (!newStart || !newEnd || newStart >= newEnd) {
         return interaction.editReply("❌ Invalid times. Ensure start < end and format is HH:MM.");
