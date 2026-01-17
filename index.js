@@ -637,6 +637,93 @@ client.on("interactionCreate", async interaction => {
   }
 
 
+  // -------- EDIT SESSION (MANAGER ONLY) --------
+  if (interaction.commandName === "edit") {
+    try {
+      await loadFromDisk();
+  
+      // Permission check
+      if (!hasManagerRoleById(interaction.user.id)) {
+        return interaction.editReply("❌ Only managers can edit sessions.");
+      }
+  
+      const targetUser = interaction.options.getUser("user");
+      if (!targetUser) {
+        return interaction.editReply("❌ You must specify a user.");
+      }
+  
+      const sessionIndex = interaction.options.getInteger("session");
+      if (!sessionIndex || sessionIndex < 1) {
+        return interaction.editReply("❌ You must specify a valid session number (starting from 1).");
+      }
+  
+      const startStr = interaction.options.getString("started");
+      const endStr   = interaction.options.getString("ended");
+      if (!startStr || !endStr) {
+        return interaction.editReply("❌ You must provide both start and end times.");
+      }
+  
+      const record = timesheet[targetUser.id];
+      if (!record || !Array.isArray(record.logs) || record.logs.length === 0) {
+        return interaction.editReply("⚠️ This user has no sessions to edit.");
+      }
+  
+      const index = sessionIndex - 1;
+      if (index >= record.logs.length) {
+        return interaction.editReply(`⚠️ User only has ${record.logs.length} session(s).`);
+      }
+  
+      // Parse PH date for today with given time
+      const today = new Date().toLocaleDateString("en-PH", { timeZone: PH_TZ });
+      const parseTime = (str) => {
+        const [h, m] = str.split(":").map(Number);
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        const [month, day, year] = today.split("/").map(Number);
+        return new Date(year, month - 1, day, h, m);
+      };
+  
+      const newStart = parseTime(startStr);
+      const newEnd = parseTime(endStr);
+  
+      if (!newStart || !newEnd || newStart >= newEnd) {
+        return interaction.editReply("❌ Invalid times. Ensure start < end and format is HH:MM.");
+      }
+  
+      const hours = (newEnd - newStart) / 3600000;
+      record.logs[index] = {
+        start: newStart.toISOString(),
+        end: newEnd.toISOString(),
+        hours: Math.round(hours * 100) / 100,
+      };
+  
+      await persist();
+  
+      const member = await safeGetMember(interaction, targetUser.id);
+      const displayName =
+        member?.displayName || targetUser.globalName || targetUser.username;
+  
+      return interaction.editReply({
+        embeds: [{
+          title: "✏️ Session Edited",
+          color: 0xf1c40f,
+          fields: [
+            { name: "👤 User", value: displayName, inline: true },
+            { name: "🆔 User ID", value: targetUser.id, inline: true },
+            { name: "📝 Session", value: `#${sessionIndex}`, inline: true },
+            { name: "▶️ New Start", value: formatDate(newStart.toISOString()), inline: true },
+            { name: "⏹ New End", value: formatDate(newEnd.toISOString()), inline: true },
+            { name: "⏱ Duration", value: `${Math.round(hours * 100) / 100}h`, inline: true },
+            { name: "👮 Edited by", value: interaction.member?.displayName || interaction.user.username, inline: true },
+          ],
+          timestamp: new Date().toISOString(),
+        }],
+      });
+  
+    } catch (err) {
+      console.error("Edit command failed:", err);
+      return safeEdit(interaction, "❌ Failed to edit session due to an internal error.");
+    }
+  }
 
   // -------- STATUS (EMBED + LIVE UPDATE) --------
   // -------- STATUS (SAFE, ID-ONLY, NO CRASHES) --------
