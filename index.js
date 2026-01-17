@@ -784,33 +784,50 @@ client.on("interactionCreate", async interaction => {
       liveStatusTimers.set(uid, timer);
   
     // ===== CLOCKED OUT =====
-    const total =
-      record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
-  
-    return interaction.editReply({
-      embeds: [{
-        title: "⚪ Status: Clocked Out",
-        color: 0x95a5a6,
-        fields: [
-          {
-            name: "👤 User",
-            value:
-              interaction.member?.displayName ||
-              interaction.user.globalName ||
-              interaction.user.username,
-            inline: true,
-          },
-          {
-            name: "⏱ Total Recorded Time",
-            value: `${Math.round(total * 100) / 100}h`,
-            inline: true,
-          },
-        ],
-        footer: { text: "No active session" },
-        timestamp: new Date().toISOString(),
-      }],
-    });
-  }
+    if (record?.active) {
+      // clocked-in logic...
+      await safeEdit(interaction, { embeds: [buildEmbed()] });
+    
+      const timer = setInterval(async () => {
+        if (!timesheet[uid]?.active) {
+          clearInterval(timer);
+          liveStatusTimers.delete(uid);
+          return;
+        }
+        const embed = buildEmbed();
+        await safeEdit(interaction, { embeds: [embed] });
+      }, 5000);
+    
+      liveStatusTimers.set(uid, timer);
+    } else {
+      // CLOCKED OUT
+      const total = record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
+    
+      await interaction.editReply({
+        embeds: [{
+          title: "⚪ Status: Clocked Out",
+          color: 0x95a5a6,
+          fields: [
+            {
+              name: "👤 User",
+              value:
+                interaction.member?.displayName ||
+                interaction.user.globalName ||
+                interaction.user.username,
+              inline: true,
+            },
+            {
+              name: "⏱ Total Recorded Time",
+              value: `${Math.round(total * 100) / 100}h`,
+              inline: true,
+            },
+          ],
+          footer: { text: "No active session" },
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
+
 
     // -------- FORCE CLOCK OUT (MANAGER ONLY | CRASH SAFE) --------
     if (interaction.commandName === "forceclockout") {
