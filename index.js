@@ -783,7 +783,7 @@ client.on("interactionCreate", async interaction => {
   
       liveStatusTimers.set(uid, timer);
       return;
-    }
+      }
   
     // ===== CLOCKED OUT =====
     const total =
