@@ -728,7 +728,68 @@ client.on("interactionCreate", async interaction => {
       }],
     });
   }
-
+  
+    // -------- FORCE CLOCK OUT (MANAGER ONLY) --------
+    if (interaction.commandName === "forceclockout") {
+      await loadFromDisk();
+    
+      // permission check
+      if (!hasManagerRoleById(interaction.user.id)) {
+        return interaction.editReply("❌ You are not allowed to force clock-out users.");
+      }
+    
+      const targetUser = interaction.options.getUser("user");
+      const record = timesheet[targetUser.id];
+    
+      if (!record || !record.active) {
+        return interaction.editReply("⚠️ That user is not currently clocked in.");
+      }
+    
+      const start = record.active;
+      const end = nowISO();
+      const hours = diffHours(start, end);
+      const rounded = Math.round(hours * 100) / 100;
+    
+      record.logs.push({
+        start,
+        end,
+        hours,
+      });
+    
+      record.active = null;
+      await persist();
+    
+      const member = await safeGetMember(interaction, targetUser.id);
+    
+      const displayName =
+        member?.displayName ||
+        targetUser.globalName ||
+        targetUser.username;
+    
+      return interaction.editReply({
+        embeds: [{
+          title: "⛔ Force Clock-Out",
+          color: 0xe67e22,
+          fields: [
+            { name: "👤 User", value: displayName, inline: true },
+            { name: "🆔 User ID", value: targetUser.id, inline: true },
+            { name: "▶️ Started", value: formatDate(start), inline: false },
+            { name: "⏹ Ended", value: formatDate(end), inline: false },
+            { name: "⏱ Duration", value: `${rounded}h`, inline: true },
+            {
+              name: "👮 Forced by",
+              value:
+                interaction.member?.displayName ||
+                interaction.user.globalName ||
+                interaction.user.username,
+              inline: true,
+            },
+          ],
+          footer: { text: "Manager Action" },
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
 
   // -------- TIMESHEET --------
   if (interaction.commandName === "timesheet") {
