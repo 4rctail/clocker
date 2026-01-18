@@ -834,7 +834,7 @@ client.on("interactionCreate", async interaction => {
           : u.name;
   
         lines.push(
-          `🟢 **${displayName}** — ${formatDate(u.active)}`
+          `🟩 **${displayName}** — ${formatDate(u.active)}`
         );
       }
   
