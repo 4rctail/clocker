@@ -808,139 +808,59 @@ client.on("interactionCreate", async interaction => {
   // -------- STATUS (SAFE, ID-ONLY, NO CRASHES) --------
   if (interaction.commandName === "status") {
     await loadFromDisk();
-
   
-    const uid = interaction.user.id;
-    const record = timesheet[uid];
+    const showAll = interaction.options.getBoolean("all");
+    const targetUser = interaction.options.getUser("user");
   
-    // ===== CLOCKED IN =====
-    // -------- STATUS ALL (ACTIVE USERS) --------
-    if (interaction.options.getSubcommand(false) === "all") {
-      await loadFromDisk();
-    
+    // ======================
+    // /status all
+    // ======================
+    if (showAll) {
       const activeUsers = Object.values(timesheet)
-        .filter(u => u?.active);
-    
-      if (!activeUsers.length) {
-        return interaction.editReply("🟢 No users are currently clocked in.");
-      }
-    
-      const lines = [];
-    
-      for (const u of activeUsers) {
-        const member = await safeGetMember(interaction, u.userId);
-    
-        const displayName = member
-          ? `${member.displayName} (${member.user.username})`
-          : u.name;
-    
-        lines.push(
-          `**${displayName}**\n` +
-          `▶️ Started: ${formatDate(u.active)}\n` +
-          `⏱ Elapsed: ${formatElapsedLive(u.active)}`
-        );
-      }
-    
+        .filter(u => u.active)
+        .map(u => `🟢 ${u.name}`)
+        .join("\n");
+  
+      return interaction.editReply(
+        activeUsers.length
+          ? `🟢 **Active Users**\n${activeUsers}`
+          : "⚪ No users are currently clocked in."
+      );
+    }
+  
+    // ======================
+    // /status user
+    // ======================
+    const user = targetUser || interaction.user;
+    const record = timesheet[user.id];
+  
+    if (record?.active) {
       return interaction.editReply({
         embeds: [{
-          title: "🟢 Active Sessions",
+          title: "🟢 Clocked In",
           color: 0x2ecc71,
-          description: lines.join("\n\n"),
-          footer: { text: `Active users: ${activeUsers.length}` },
-          timestamp: new Date().toISOString(),
-        }],
+          fields: [
+            { name: "User", value: record.name },
+            { name: "Started", value: formatDate(record.active) },
+            { name: "Elapsed", value: formatElapsedLive(record.active) }
+          ],
+          timestamp: new Date().toISOString()
+        }]
       });
     }
 
-    if (record?.active) {
-      const start = record.active;
-  
-      const embedBase = {
-        title: "🟢 Status: Clocked In",
-        color: 0x2ecc71,
-        footer: { text: "Live updating every 5 seconds" },
-      };
-  
-      const buildEmbed = () => ({
-        ...embedBase,
-        fields: [
-          { 
-            name: "👤 User",
-            value:
-              interaction.member?.displayName ||
-              interaction.user.globalName ||
-              interaction.user.username,
-            inline: true,
-          },
-          {
-            name: "▶️ Started",
-            value: formatDate(start),
-            inline: false,
-          },
-          {
-            name: "⏱ Elapsed",
-            value: formatElapsedLive(start),
-            inline: true,
-          },
-        ],
-        timestamp: new Date().toISOString(),
-      });
-  
-      // clear existing timer
-      const existing = liveStatusTimers.get(uid);
-      if (existing) {
-        clearInterval(existing);
-        liveStatusTimers.delete(uid);
-      }
-  
-      await safeEdit(interaction, { embeds: [buildEmbed()] });
-
-      const timer = setInterval(async () => {
-        // Stop if user no longer active
-        if (!timesheet[uid]?.active) {
-          clearInterval(timer);
-          liveStatusTimers.delete(uid);
-          return;
-        }
-      
-        const embed = buildEmbed(); // your existing buildEmbed function
-      
-        await safeEdit(interaction, { embeds: [embed] });
-      }, 5000);
-
-  
-      liveStatusTimers.set(uid, timer);
-      return;
-    }
-  
-    // ===== CLOCKED OUT =====
-    const total =
-      record?.logs?.reduce((t, l) => t + l.hours, 0) || 0;
-  
-    return interaction.editReply({
-      embeds: [{
-        title: "⚪ Status: Clocked Out",
-        color: 0x95a5a6,
-        fields: [
-          {
-            name: "👤 User",
-            value:
-              interaction.member?.displayName ||
-              interaction.user.globalName ||
-              interaction.user.username,
-            inline: true,
-          },
-          {
-            name: "⏱ Total Recorded Time",
-            value: `${Math.round(total * 100) / 100}h`,
-            inline: true,
-          },
-        ],
-        footer: { text: "No active session" },
-        timestamp: new Date().toISOString(),
-      }],
-    });
-  }
+  // ======================
+  // clocked out
+  // ======================
+  return interaction.editReply({
+    embeds: [{
+      title: "⚪ Clocked Out",
+      color: 0x95a5a6,
+      description: `${user.username} is not clocked in.`,
+      timestamp: new Date().toISOString()
+    }]
+  });
+}
 
     // -------- FORCE CLOCK OUT (MANAGER ONLY | CRASH SAFE) --------
     if (interaction.commandName === "forceclockout") {
