@@ -814,6 +814,44 @@ client.on("interactionCreate", async interaction => {
     const record = timesheet[uid];
   
     // ===== CLOCKED IN =====
+    // -------- STATUS ALL (ACTIVE USERS) --------
+    if (interaction.options.getSubcommand(false) === "all") {
+      await loadFromDisk();
+    
+      const activeUsers = Object.values(timesheet)
+        .filter(u => u?.active);
+    
+      if (!activeUsers.length) {
+        return interaction.editReply("🟢 No users are currently clocked in.");
+      }
+    
+      const lines = [];
+    
+      for (const u of activeUsers) {
+        const member = await safeGetMember(interaction, u.userId);
+    
+        const displayName = member
+          ? `${member.displayName} (${member.user.username})`
+          : u.name;
+    
+        lines.push(
+          `**${displayName}**\n` +
+          `▶️ Started: ${formatDate(u.active)}\n` +
+          `⏱ Elapsed: ${formatElapsedLive(u.active)}`
+        );
+      }
+    
+      return interaction.editReply({
+        embeds: [{
+          title: "🟢 Active Sessions",
+          color: 0x2ecc71,
+          description: lines.join("\n\n"),
+          footer: { text: `Active users: ${activeUsers.length}` },
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
+
     if (record?.active) {
       const start = record.active;
   
