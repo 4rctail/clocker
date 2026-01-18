@@ -832,9 +832,9 @@ client.on("interactionCreate", async interaction => {
         const displayName = member
           ? `${member.displayName} (${member.user.username})`
           : u.name;
-  
+
         lines.push(
-          `✔️ **${displayName}** — ${formatDate(u.active)}`
+          `❇️ **${displayName}** — \`${formatDate(u.active)}\``
         );
       }
   
