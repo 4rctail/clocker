@@ -592,13 +592,20 @@ client.on("interactionCreate", async interaction => {
   });
 
     
-    
-    // -------- TOTAL HOURS (ALL USERS) --------
     // -------- TOTAL HOURS (ALL USERS) --------
     if (interaction.commandName === "totalhr") {
       await loadFromDisk();
     
+      // 🔒 MANAGER ONLY
+      if (!hasManagerRoleById(interaction.user.id)) {
+        return interaction.editReply({
+          content: "❌ Only managers can view total hours.",
+          ephemeral: true,
+        });
+      }
+    
       let lines = [];
+      let grandTotal = 0;
     
       for (const user of Object.values(timesheet)) {
         if (!user?.logs?.length) continue;
@@ -611,11 +618,15 @@ client.on("interactionCreate", async interaction => {
         total = Math.round(total * 100) / 100;
         if (total <= 0) continue;
     
+        grandTotal += total;
+    
         // Try to fetch member in the guild
         let displayName = user.name; // fallback
         if (interaction.guild) {
-          const member = interaction.guild.members.cache.get(user.userId) ||
-                         await interaction.guild.members.fetch(user.userId).catch(() => null);
+          const member =
+            interaction.guild.members.cache.get(user.userId) ||
+            await interaction.guild.members.fetch(user.userId).catch(() => null);
+    
           if (member) {
             displayName = `${member.displayName} (${member.user.username})`;
           } else {
@@ -630,16 +641,23 @@ client.on("interactionCreate", async interaction => {
         return interaction.editReply("📭 No tracked hours.");
       }
     
+      grandTotal = Math.round(grandTotal * 100) / 100;
+    
+      // ➕ ADD GRAND TOTAL AT BOTTOM
+      lines.push("");
+      lines.push(`**🧮 GRAND TOTAL:** **${grandTotal.toFixed(2)}h**`);
+    
       return interaction.editReply({
         embeds: [{
           title: "📊 Total Hours (All Users)",
           color: 0x9b59b6,
           description: lines.join("\n"),
-          footer: { text: "Time Tracker" },
+          footer: { text: "Managers only • Time Tracker" },
           timestamp: new Date().toISOString(),
         }],
       });
     }
+    
 
 
     // -------- CLOCK IN --------
