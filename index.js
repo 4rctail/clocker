@@ -264,14 +264,7 @@ function appendLogs(userId, newLogs) {
   }
 }
 
-// ===== STRICT HH:MM VALIDATION =====
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-if (!HHMM.test(startStr) || !HHMM.test(endStr)) {
-  return interaction.editReply(
-    "❌ Time format must be **HH:MM** (24-hour). Use `0` + `0` to delete a session."
-  );
-}
 
 /**
  * Parse HH:MM string into a Date in PH timezone on a given date.
