@@ -761,8 +761,19 @@ client.on("interactionCreate", async interaction => {
         return new Date(year, month - 1, day, h, m);
       };
   
-      const newStart = parsePHTime(startStr);
-      const newEnd = parsePHTime(endStr);
+      // Preserve original session date (PH)
+      const original = record.logs[index];
+      const originalStart = new Date(original.start);
+      
+      // Extract PH date from original session
+      const phDate = originalStart.toLocaleDateString("en-PH", {
+        timeZone: PH_TZ,
+      });
+      
+      // Parse HH:MM using the ORIGINAL session date
+      const newStart = parsePHTime(startStr, phDate);
+      const newEnd   = parsePHTime(endStr, phDate);
+
   
       if (!newStart || !newEnd || newStart >= newEnd) {
         return interaction.editReply("❌ Invalid times. Ensure start < end and format is HH:MM.");
