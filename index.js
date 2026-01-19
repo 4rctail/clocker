@@ -31,6 +31,12 @@ client.on("error", (err) => {
   console.error("Discord client error:", err);
 });
 
+const PUBLIC_COMMANDS = new Set([
+  "clockin",
+  "clockout",
+  "forceclockout",
+]);
+
 let timesheet = {};
 let gitCommitTimer = null;
 
@@ -579,8 +585,12 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-  await interaction.deferReply();
-  
+  const isPublic = PUBLIC_COMMANDS.has(interaction.commandName);
+
+  await interaction.deferReply({
+    ephemeral: !isPublic,
+  });
+
     
     
     // -------- TOTAL HOURS (ALL USERS) --------
