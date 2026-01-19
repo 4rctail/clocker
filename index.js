@@ -263,6 +263,16 @@ function appendLogs(userId, newLogs) {
     }
   }
 }
+
+// ===== STRICT HH:MM VALIDATION =====
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+if (!HHMM.test(startStr) || !HHMM.test(endStr)) {
+  return interaction.editReply(
+    "❌ Time format must be **HH:MM** (24-hour). Use `0` + `0` to delete a session."
+  );
+}
+
 /**
  * Parse HH:MM string into a Date in PH timezone on a given date.
  * If dateStr is provided (MM/DD/YYYY), use that day; otherwise today.
@@ -743,7 +753,6 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-
   // -------- EDIT SESSION (MANAGER ONLY) --------
   if (interaction.commandName === "edit") {
     try {
@@ -761,7 +770,9 @@ client.on("interactionCreate", async interaction => {
   
       const sessionIndex = interaction.options.getInteger("session");
       if (!sessionIndex || sessionIndex < 1) {
-        return interaction.editReply("❌ You must specify a valid session number (starting from 1).");
+        return interaction.editReply(
+          "❌ You must specify a valid session number (starting from 1)."
+        );
       }
   
       const startStr = interaction.options.getString("started");
@@ -777,37 +788,81 @@ client.on("interactionCreate", async interaction => {
   
       const index = sessionIndex - 1;
       if (index >= record.logs.length) {
-        return interaction.editReply(`⚠️ User only has ${record.logs.length} session(s).`);
+        return interaction.editReply(
+          `⚠️ User only has ${record.logs.length} session(s).`
+        );
       }
   
-      // Parse PH date for today with given time
-      const today = new Date().toLocaleDateString("en-PH", { timeZone: PH_TZ });
-      const parseTime = (str) => {
-        const [h, m] = str.split(":").map(Number);
-        if (Number.isNaN(h) || Number.isNaN(m)) return null;
-        const [month, day, year] = today.split("/").map(Number);
-        return new Date(year, month - 1, day, h, m);
-      };
+      // ==================================================
+      // 🗑️ DELETE SESSION EXCEPTION
+      // ==================================================
+      if (startStr === "0" && endStr === "0") {
+        const deleted = record.logs.splice(index, 1);
+  
+        await persist();
+  
+        const member = await safeGetMember(interaction, targetUser.id);
+        const displayName =
+          member?.displayName ||
+          targetUser.globalName ||
+          targetUser.username;
+  
+        return interaction.editReply({
+          embeds: [{
+            title: "🗑️ Session Deleted",
+            color: 0xe74c3c,
+            fields: [
+              { name: "👤 User", value: displayName, inline: true },
+              { name: "🆔 User ID", value: targetUser.id, inline: true },
+              { name: "📝 Deleted Session", value: `#${sessionIndex}`, inline: true },
+              {
+                name: "📅 Original Session",
+                value: formatSession(deleted[0].start, deleted[0].end),
+                inline: false,
+              },
+              {
+                name: "👮 Deleted by",
+                value:
+                  interaction.member?.displayName ||
+                  interaction.user.username,
+                inline: true,
+              },
+            ],
+            timestamp: new Date().toISOString(),
+          }],
+        });
+      }
+  
+      // ==================================================
+      // ⏱️ STRICT HH:MM VALIDATION
+      // ==================================================
+      const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  
+      if (!HHMM.test(startStr) || !HHMM.test(endStr)) {
+        return interaction.editReply(
+          "❌ Time format must be **HH:MM** (24-hour). Use `0` + `0` to delete a session."
+        );
+      }
   
       // Preserve original session date (PH)
       const original = record.logs[index];
       const originalStart = new Date(original.start);
-      
-      // Extract PH date from original session
+  
       const phDate = originalStart.toLocaleDateString("en-PH", {
         timeZone: PH_TZ,
       });
-      
-      // Parse HH:MM using the ORIGINAL session date
+  
       const newStart = parsePHTime(startStr, phDate);
       const newEnd   = parsePHTime(endStr, phDate);
-
   
       if (!newStart || !newEnd || newStart >= newEnd) {
-        return interaction.editReply("❌ Invalid times. Ensure start < end and format is HH:MM.");
+        return interaction.editReply(
+          "❌ Invalid times. Ensure start < end and format is HH:MM."
+        );
       }
   
       const hours = (newEnd - newStart) / 3600000;
+  
       record.logs[index] = {
         start: newStart.toISOString(),
         end: newEnd.toISOString(),
@@ -818,7 +873,9 @@ client.on("interactionCreate", async interaction => {
   
       const member = await safeGetMember(interaction, targetUser.id);
       const displayName =
-        member?.displayName || targetUser.globalName || targetUser.username;
+        member?.displayName ||
+        targetUser.globalName ||
+        targetUser.username;
   
       return interaction.editReply({
         embeds: [{
@@ -831,7 +888,13 @@ client.on("interactionCreate", async interaction => {
             { name: "▶️ New Start", value: formatDate(newStart.toISOString()), inline: true },
             { name: "⏹ New End", value: formatDate(newEnd.toISOString()), inline: true },
             { name: "⏱ Duration", value: `${Math.round(hours * 100) / 100}h`, inline: true },
-            { name: "👮 Edited by", value: interaction.member?.displayName || interaction.user.username, inline: true },
+            {
+              name: "👮 Edited by",
+              value:
+                interaction.member?.displayName ||
+                interaction.user.username,
+              inline: true,
+            },
           ],
           timestamp: new Date().toISOString(),
         }],
@@ -839,9 +902,13 @@ client.on("interactionCreate", async interaction => {
   
     } catch (err) {
       console.error("Edit command failed:", err);
-      return safeEdit(interaction, "❌ Failed to edit session due to an internal error.");
+      return safeEdit(
+        interaction,
+        "❌ Failed to edit session due to an internal error."
+      );
     }
   }
+
 
   // -------- STATUS --------
   if (interaction.commandName === "status") {
@@ -951,11 +1018,6 @@ client.on("interactionCreate", async interaction => {
         color: 0x95a5a6,
         fields: [
           { name: "👤 User", value: displayName, inline: true },
-          {
-            name: "⏱ Total Recorded Time",
-            value: `${Math.round(total * 100) / 100}h`,
-            inline: true,
-          },
         ],
         footer: { text: "No active session" },
         timestamp: new Date().toISOString(),
