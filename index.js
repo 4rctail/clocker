@@ -16,8 +16,24 @@ const GIT_REPO = process.env.GIT_REPO;
 const GIT_BRANCH = process.env.GIT_BRANCH || "main";
 
 // =======================
+// CHANNEL RESTRICTION
+// =======================
+const TIME_TRACKER_CHANNEL_ID = "1437997754554257560";
+
+if (interaction.channelId !== TIME_TRACKER_CHANNEL_ID) {
+  return interaction.reply({
+    content: "❌ This command can only be used in **#time-tracker**.",
+    ephemeral: true,
+  });
+}
+
+
+// =======================
 // DISCORD CLIENT
 // =======================
+
+
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -578,6 +594,15 @@ client.on("interactionCreate", async interaction => {
       ephemeral: true,
     });
   }
+
+    // 🔒 CHANNEL LOCK
+  if (interaction.channelId !== TIME_TRACKER_CHANNEL_ID) {
+    return interaction.reply({
+      content: "❌ This command can only be used in **#time-tracker**.",
+      ephemeral: true,
+    });
+  }
+  
   if (
     interaction.commandName === "forceclockout" &&
     !interaction.options.data.length
