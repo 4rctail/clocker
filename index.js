@@ -580,7 +580,7 @@ client.on("interactionCreate", async interaction => {
       ephemeral: true,
     });
   }
-  const TIME_TRACKER_CHANNEL_ID = "1437997754554257560";
+  const TIME_TRACKER_CHANNEL_ID = "1460301758940188733";
     // 🔒 CHANNEL LOCK
   if (interaction.channelId !== TIME_TRACKER_CHANNEL_ID) {
     return interaction.reply({
