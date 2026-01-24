@@ -1164,10 +1164,64 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
   
-    const reset = interaction.options.getBoolean("reset"); // Boolean
+    const reset = interaction.options.getBoolean("reset");
+    const trackId = interaction.options.getInteger("id");
   
-    // ===== IF RESET TRUE → DO ARCHIVE / CUT LOGS =====
-    if (reset) {
+    // ===== VIEW ARCHIVED LOG =====
+    if (trackId) {
+      let history;
+      try {
+        history = await readFileFromGitHub("timesheetHistory.json");
+      } catch (err) {
+        console.error(err);
+        return interaction.editReply("❌ Failed to read log history from GitHub.");
+      }
+  
+      const track = history.tracks?.find(t => t.trackId === trackId);
+      if (!track) {
+        return interaction.editReply(`❌ No log found for ID **${trackId}**.`);
+      }
+  
+      const lines = [];
+      let grandTotal = 0;
+  
+      for (const user of Object.values(track.data)) {
+        let total = 0;
+        for (const log of user.logs || []) {
+          if (typeof log.hours === "number") total += log.hours;
+        }
+  
+        total = Math.round(total * 100) / 100;
+        if (total <= 0) continue;
+  
+        grandTotal += total;
+        lines.push(`**${user.name}** — ${total.toFixed(2)}h`);
+      }
+  
+      lines.push("");
+      lines.push(`**🧮 GRAND TOTAL:** **${grandTotal.toFixed(2)}h**`);
+  
+      return interaction.editReply({
+        embeds: [{
+          title: "📦 LogTracker View",
+          color: 0x3498db,
+          description: lines.join("\n"),
+          fields: [
+            { name: "🆔 Track ID", value: String(track.trackId), inline: true },
+            {
+              name: "🕒 Time Range",
+              value: `${formatDate(track.timeRange.oldest)}\n→ ${formatDate(track.timeRange.latest)}`,
+              inline: false,
+            },
+          ],
+          footer: { text: "Source: GitHub • timesheetHistory.json" },
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
+  
+    // ===== ARCHIVE LOGS =====
+    else if (reset) {
       const HISTORY_FILE = "./timesheetHistory.json";
       let history = { tracks: [] };
   
@@ -1247,15 +1301,16 @@ client.on("interactionCreate", async interaction => {
       });
     }
   
-    // ===== IF RESET FALSE OR OMITTED → SHOW INSTRUCTIONS =====
+    // ===== DEFAULT INSTRUCTIONS =====
     else {
       return interaction.editReply({
         embeds: [{
           title: "📦 LogTracker Instructions",
           color: 0x3498db,
           description:
-            "Use this command to archive current logs and reset total hours.\n\n" +
+            "Use this command to archive logs or view past logtracks.\n\n" +
             "`/logtracker run reset:true` → Archive current logs, clear active logs, push to GitHub.\n" +
+            "`/logtracker run id:<number>` → View a specific logtrack.\n" +
             "`/logtracker run` → Show these instructions.",
           footer: { text: "Manager only" },
           timestamp: new Date().toISOString(),
@@ -1263,7 +1318,7 @@ client.on("interactionCreate", async interaction => {
       });
     }
   }
-  
+
 
 
 
