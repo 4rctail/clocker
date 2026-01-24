@@ -1158,14 +1158,21 @@ client.on("interactionCreate", async interaction => {
   // -------- LOG TRACKER (MANAGER ONLY) --------
   if (interaction.commandName === "logtracker") {
     await loadFromDisk();
+  
+    // single subcommand 'run'
     const sub = interaction.options.getSubcommand();
+  
+    // Only managers can run logtracker actions
     if (!hasManagerRoleById(interaction.user.id)) {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
-    
-    if (sub === "view") {
-      const trackId = interaction.options.getInteger("id");
-    
+  
+    // Get options from the new structure
+    const reset = interaction.options.getUser("reset"); // optional user for reset
+    const trackId = interaction.options.getInteger("id"); // optional id for view
+  
+    // If ID is provided, treat it as "view" mode
+    if (trackId) {
       let history;
       try {
         history = await readFileFromGitHub("timesheetHistory.json");
@@ -1173,32 +1180,32 @@ client.on("interactionCreate", async interaction => {
         console.error(err);
         return interaction.editReply("❌ Failed to read log history from GitHub.");
       }
-    
+  
       const track = history.tracks?.find(t => t.trackId === trackId);
       if (!track) {
         return interaction.editReply(`❌ No log found for ID **${trackId}**.`);
       }
-    
+  
       const lines = [];
       let grandTotal = 0;
-    
+  
       for (const user of Object.values(track.data)) {
         let total = 0;
         for (const log of user.logs || []) {
           if (typeof log.hours === "number") total += log.hours;
         }
-    
+  
         total = Math.round(total * 100) / 100;
         if (total <= 0) continue;
-    
+  
         grandTotal += total;
         lines.push(`**${user.name}** — ${total.toFixed(2)}h`);
       }
-    
+  
       lines.push("");
       lines.push(`**🧮 GRAND TOTAL:** **${grandTotal.toFixed(2)}h**`);
-    
-      return interaction.editReply({   // ✅ THIS return is critical
+  
+      return interaction.editReply({
         embeds: [{
           title: "📦 LogTracker View",
           color: 0x3498db,
@@ -1207,8 +1214,7 @@ client.on("interactionCreate", async interaction => {
             { name: "🆔 Track ID", value: String(track.trackId), inline: true },
             {
               name: "🕒 Time Range",
-              value:
-                `${formatDate(track.timeRange.oldest)}\n→ ${formatDate(track.timeRange.latest)}`,
+              value: `${formatDate(track.timeRange.oldest)}\n→ ${formatDate(track.timeRange.latest)}`,
               inline: false,
             },
           ],
@@ -1217,11 +1223,10 @@ client.on("interactionCreate", async interaction => {
         }],
       });
     }
-
-
+  
+    // If no ID provided, treat it as "archive" mode
     const HISTORY_FILE = "./timesheetHistory.json";
   
-    // Load history
     let history = { tracks: [] };
     try {
       history = JSON.parse(await fs.readFile(HISTORY_FILE, "utf8"));
@@ -1237,7 +1242,6 @@ client.on("interactionCreate", async interaction => {
     for (const [key, user] of Object.entries(timesheet)) {
       if (!Array.isArray(user.logs) || user.logs.length === 0) continue;
   
-      // Track date range
       for (const log of user.logs) {
         const s = new Date(log.start);
         const e = new Date(log.end);
@@ -1246,24 +1250,18 @@ client.on("interactionCreate", async interaction => {
         if (!latest || e > latest) latest = e;
       }
   
-      // Copy user
-      movedData[key] = {
-        ...user,
-        logs: [...user.logs],
-      };
-  
-      // Clear logs but keep active if present
-      user.logs = [];
+      movedData[key] = { ...user, logs: [...user.logs] };
+      user.logs = []; // clear logs but keep active if present
     }
   
     if (!Object.keys(movedData).length) {
       return interaction.editReply("📭 No logs to archive.");
     }
   
-    const trackId = history.tracks.length + 1;
+    const newTrackId = history.tracks.length + 1;
   
     history.tracks.push({
-      trackId,
+      trackId: newTrackId,
       createdAt: new Date().toISOString(),
       timeRange: {
         oldest: oldest.toISOString(),
@@ -1273,17 +1271,14 @@ client.on("interactionCreate", async interaction => {
     });
   
     const historyJson = JSON.stringify(history, null, 2);
-
-    // local write (still useful)
-    await fs.writeFile("./timesheetHistory.json", historyJson);
-    
-    // 🔥 COMMIT TO GITHUB
+    await fs.writeFile(HISTORY_FILE, historyJson);
+  
     await commitFileToGitHub({
       path: "timesheetHistory.json",
       content: historyJson,
-      message: `LogTracker #${trackId} (${formatDate(oldest.toISOString())} → ${formatDate(latest.toISOString())})`,
+      message: `LogTracker #${newTrackId} (${formatDate(oldest.toISOString())} → ${formatDate(latest.toISOString())})`,
     });
-
+  
     await persist();
   
     return interaction.editReply({
@@ -1291,11 +1286,10 @@ client.on("interactionCreate", async interaction => {
         title: "📦 Log Tracker Completed",
         color: 0x3498db,
         fields: [
-          { name: "🆔 Track ID", value: `${trackId}`, inline: true },
+          { name: "🆔 Track ID", value: `${newTrackId}`, inline: true },
           {
             name: "🕒 Time Range",
-            value:
-              `${formatDate(oldest.toISOString())}\n→ ${formatDate(latest.toISOString())}`,
+            value: `${formatDate(oldest.toISOString())}\n→ ${formatDate(latest.toISOString())}`,
             inline: false,
           },
           {
@@ -1309,6 +1303,7 @@ client.on("interactionCreate", async interaction => {
       }],
     });
   }
+
 
   // -------- TIMESHEET --------
   if (interaction.commandName === "timesheet") {
