@@ -192,6 +192,41 @@ async function safeGetMember(interaction, userId) {
   );
 }
 
+async function commitFileToGitHub({
+  path,
+  content,
+  message,
+}) {
+  const api = `https://api.github.com/repos/${GIT_USER}/${GIT_REPO}/contents/${path}`;
+  const headers = {
+    Authorization: `token ${GIT_TOKEN}`,
+    Accept: "application/vnd.github+json",
+  };
+
+  // Get existing file SHA (if exists)
+  let sha = null;
+  const existing = await fetch(api, { headers });
+  if (existing.ok) {
+    const data = await existing.json();
+    sha = data.sha;
+  }
+
+  const res = await fetch(api, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content).toString("base64"),
+      sha,
+      branch: process.env.GIT_BRANCH || "main",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GitHub commit failed: ${err}`);
+  }
+}
 
 // =======================
 // STRICT USER RESOLUTION (ID-FIRST)
@@ -1161,7 +1196,18 @@ client.on("interactionCreate", async interaction => {
       data: movedData,
     });
   
-    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
+    const historyJson = JSON.stringify(history, null, 2);
+
+    // local write (still useful)
+    await fs.writeFile("./timesheetHistory.json", historyJson);
+    
+    // 🔥 COMMIT TO GITHUB
+    await commitFileToGitHub({
+      path: "timesheetHistory.json",
+      content: historyJson,
+      message: `LogTracker #${trackId} (${formatDate(oldest.toISOString())} → ${formatDate(latest.toISOString())})`,
+    });
+
     await persist();
   
     return interaction.editReply({
