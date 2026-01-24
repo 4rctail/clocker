@@ -1159,19 +1159,26 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "logtracker") {
     await loadFromDisk();
   
-    // single subcommand 'run'
-    const sub = interaction.options.getSubcommand();
+    const sub = interaction.options.getSubcommand(); // should be 'run'
   
-    // Only managers can run logtracker actions
     if (!hasManagerRoleById(interaction.user.id)) {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
   
-    // Get options from the new structure
-    const reset = interaction.options.getUser("reset"); // optional user for reset
-    const trackId = interaction.options.getInteger("id"); // optional id for view
+    // Get options
+    const reset = interaction.options.getBoolean("reset"); // true/false
+    const trackId = interaction.options.getInteger("id"); // optional ID for view
   
-    // If ID is provided, treat it as "view" mode
+    // RESET logic
+    if (reset) {
+      for (const user of Object.values(timesheet)) {
+        if (user.totalHours) user.totalHours = 0; // reset total hours
+      }
+      await persist();
+      return interaction.editReply("✅ All total hours have been reset.");
+    }
+  
+    // VIEW logic (if ID is provided)
     if (trackId) {
       let history;
       try {
@@ -1224,7 +1231,7 @@ client.on("interactionCreate", async interaction => {
       });
     }
   
-    // If no ID provided, treat it as "archive" mode
+    // ARCHIVE logic (if no reset or ID)
     const HISTORY_FILE = "./timesheetHistory.json";
   
     let history = { tracks: [] };
@@ -1303,6 +1310,7 @@ client.on("interactionCreate", async interaction => {
       }],
     });
   }
+
 
 
   // -------- TIMESHEET --------
