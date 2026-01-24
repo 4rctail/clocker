@@ -1159,26 +1159,24 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "logtracker") {
     await loadFromDisk();
   
-    const sub = interaction.options.getSubcommand(); // should be 'run'
-  
+    const sub = interaction.options.getSubcommand(); // should always be 'run'
     if (!hasManagerRoleById(interaction.user.id)) {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
   
-    // Get options
-    const reset = interaction.options.getBoolean("reset"); // true/false
-    const trackId = interaction.options.getInteger("id"); // optional ID for view
+    const reset = interaction.options.getBoolean("reset"); // Boolean
+    const trackId = interaction.options.getInteger("id");   // optional
   
-    // RESET logic
+    // ===== RESET total hours ONLY =====
     if (reset) {
       for (const user of Object.values(timesheet)) {
-        if (user.totalHours) user.totalHours = 0; // reset total hours
+        if (user.totalHours) user.totalHours = 0;
       }
       await persist();
       return interaction.editReply("✅ All total hours have been reset.");
     }
   
-    // VIEW logic (if ID is provided)
+    // ===== VIEW archived log by ID =====
     if (trackId) {
       let history;
       try {
@@ -1189,18 +1187,14 @@ client.on("interactionCreate", async interaction => {
       }
   
       const track = history.tracks?.find(t => t.trackId === trackId);
-      if (!track) {
-        return interaction.editReply(`❌ No log found for ID **${trackId}**.`);
-      }
+      if (!track) return interaction.editReply(`❌ No log found for ID **${trackId}**.`);
   
       const lines = [];
       let grandTotal = 0;
   
       for (const user of Object.values(track.data)) {
         let total = 0;
-        for (const log of user.logs || []) {
-          if (typeof log.hours === "number") total += log.hours;
-        }
+        for (const log of user.logs || []) if (typeof log.hours === "number") total += log.hours;
   
         total = Math.round(total * 100) / 100;
         if (total <= 0) continue;
@@ -1231,10 +1225,10 @@ client.on("interactionCreate", async interaction => {
       });
     }
   
-    // ARCHIVE logic (if no reset or ID)
+    // ===== ARCHIVE / CUT logs (DEFAULT RUN) =====
     const HISTORY_FILE = "./timesheetHistory.json";
-  
     let history = { tracks: [] };
+  
     try {
       history = JSON.parse(await fs.readFile(HISTORY_FILE, "utf8"));
       if (!Array.isArray(history.tracks)) history.tracks = [];
@@ -1258,7 +1252,7 @@ client.on("interactionCreate", async interaction => {
       }
   
       movedData[key] = { ...user, logs: [...user.logs] };
-      user.logs = []; // clear logs but keep active if present
+      user.logs = []; // clear active logs but keep active session if any
     }
   
     if (!Object.keys(movedData).length) {
