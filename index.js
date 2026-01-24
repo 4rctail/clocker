@@ -182,6 +182,26 @@ async function safeEdit(interaction, payload) {
   }
 }
 
+async function readFileFromGitHub(path) {
+  const api = `https://api.github.com/repos/${GIT_USER}/${GIT_REPO}/contents/${path}`;
+
+  const res = await fetch(api, {
+    headers: {
+      Authorization: `token ${GIT_TOKEN}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to read ${path} from GitHub`);
+  }
+
+  const data = await res.json();
+  const decoded = Buffer.from(data.content, "base64").toString("utf8");
+  return JSON.parse(decoded);
+}
+
+
 async function safeGetMember(interaction, userId) {
   if (!interaction.inGuild()) return null;
   if (!interaction.guild) return null;
@@ -1142,7 +1162,61 @@ client.on("interactionCreate", async interaction => {
     if (!hasManagerRoleById(interaction.user.id)) {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
-  
+    if (sub === "view") {
+      const trackId = interaction.options.getInteger("id");
+    
+      let history;
+      try {
+        history = await readFileFromGitHub("timesheetHistory.json");
+      } catch (err) {
+        console.error(err);
+        return interaction.editReply("❌ Failed to read log history from GitHub.");
+      }
+    
+      const track = history.tracks?.find(t => t.trackId === trackId);
+      if (!track) {
+        return interaction.editReply(`❌ No log found for ID **${trackId}**.`);
+      }
+    
+      const lines = [];
+      let grandTotal = 0;
+    
+      for (const user of Object.values(track.data)) {
+        let total = 0;
+        for (const log of user.logs || []) {
+          if (typeof log.hours === "number") total += log.hours;
+        }
+    
+        total = Math.round(total * 100) / 100;
+        if (total <= 0) continue;
+    
+        grandTotal += total;
+        lines.push(`**${user.name}** — ${total.toFixed(2)}h`);
+      }
+    
+      lines.push("");
+      lines.push(`**🧮 GRAND TOTAL:** **${grandTotal.toFixed(2)}h**`);
+    
+      return interaction.editReply({
+        embeds: [{
+          title: "📦 LogTracker View",
+          color: 0x3498db,
+          description: lines.join("\n"),
+          fields: [
+            { name: "🆔 Track ID", value: String(track.trackId), inline: true },
+            {
+              name: "🕒 Time Range",
+              value:
+                `${formatDate(track.timeRange.oldest)}\n→ ${formatDate(track.timeRange.latest)}`,
+              inline: false,
+            },
+          ],
+          footer: { text: "Source: GitHub • timesheetHistory.json" },
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
+
     const HISTORY_FILE = "./timesheetHistory.json";
   
     // Load history
