@@ -1158,10 +1158,11 @@ client.on("interactionCreate", async interaction => {
   // -------- LOG TRACKER (MANAGER ONLY) --------
   if (interaction.commandName === "logtracker") {
     await loadFromDisk();
-  
+    const sub = interaction.options.getSubcommand();
     if (!hasManagerRoleById(interaction.user.id)) {
       return interaction.editReply("❌ Only managers can run log tracker.");
     }
+    
     if (sub === "view") {
       const trackId = interaction.options.getInteger("id");
     
@@ -1197,7 +1198,7 @@ client.on("interactionCreate", async interaction => {
       lines.push("");
       lines.push(`**🧮 GRAND TOTAL:** **${grandTotal.toFixed(2)}h**`);
     
-      return interaction.editReply({
+      return interaction.editReply({   // ✅ THIS return is critical
         embeds: [{
           title: "📦 LogTracker View",
           color: 0x3498db,
@@ -1216,6 +1217,7 @@ client.on("interactionCreate", async interaction => {
         }],
       });
     }
+
 
     const HISTORY_FILE = "./timesheetHistory.json";
   
