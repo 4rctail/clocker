@@ -1100,6 +1100,93 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
+  // -------- LOG TRACKER (MANAGER ONLY) --------
+  if (interaction.commandName === "logtracker") {
+    await loadFromDisk();
+  
+    if (!hasManagerRoleById(interaction.user.id)) {
+      return interaction.editReply("❌ Only managers can run log tracker.");
+    }
+  
+    const HISTORY_FILE = "./timesheetHistory.json";
+  
+    // Load history
+    let history = { tracks: [] };
+    try {
+      history = JSON.parse(await fs.readFile(HISTORY_FILE, "utf8"));
+      if (!Array.isArray(history.tracks)) history.tracks = [];
+    } catch {
+      history = { tracks: [] };
+    }
+  
+    const movedData = {};
+    let oldest = null;
+    let latest = null;
+  
+    for (const [key, user] of Object.entries(timesheet)) {
+      if (!Array.isArray(user.logs) || user.logs.length === 0) continue;
+  
+      // Track date range
+      for (const log of user.logs) {
+        const s = new Date(log.start);
+        const e = new Date(log.end);
+  
+        if (!oldest || s < oldest) oldest = s;
+        if (!latest || e > latest) latest = e;
+      }
+  
+      // Copy user
+      movedData[key] = {
+        ...user,
+        logs: [...user.logs],
+      };
+  
+      // Clear logs but keep active if present
+      user.logs = [];
+    }
+  
+    if (!Object.keys(movedData).length) {
+      return interaction.editReply("📭 No logs to archive.");
+    }
+  
+    const trackId = history.tracks.length + 1;
+  
+    history.tracks.push({
+      trackId,
+      createdAt: new Date().toISOString(),
+      timeRange: {
+        oldest: oldest.toISOString(),
+        latest: latest.toISOString(),
+      },
+      data: movedData,
+    });
+  
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
+    await persist();
+  
+    return interaction.editReply({
+      embeds: [{
+        title: "📦 Log Tracker Completed",
+        color: 0x3498db,
+        fields: [
+          { name: "🆔 Track ID", value: `${trackId}`, inline: true },
+          {
+            name: "🕒 Time Range",
+            value:
+              `${formatDate(oldest.toISOString())}\n→ ${formatDate(latest.toISOString())}`,
+            inline: false,
+          },
+          {
+            name: "👮 Executed by",
+            value: interaction.member?.displayName || interaction.user.username,
+            inline: true,
+          },
+        ],
+        footer: { text: "Archived logs, active sessions preserved" },
+        timestamp: new Date().toISOString(),
+      }],
+    });
+  }
 
   // -------- TIMESHEET --------
   if (interaction.commandName === "timesheet") {
